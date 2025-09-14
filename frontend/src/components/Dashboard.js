@@ -58,7 +58,6 @@ const Dashboard = () => {
     { id: 'overview', label: 'Fleet Overview', icon: BarChart3 },
     { id: 'map', label: 'Live Map', icon: Map },
     { id: 'routes', label: 'Route Management', icon: Route },
-    { id: 'compliance', label: 'Compliance', icon: Shield },
     { id: 'tickets', label: 'Digital Tickets', icon: UserCheck },
     { id: 'crowd', label: 'Crowd Analytics', icon: Users },
     { id: 'emergency', label: 'Emergency', icon: AlertTriangle },
