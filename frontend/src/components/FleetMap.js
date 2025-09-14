@@ -15,11 +15,15 @@ import {
 } from 'lucide-react';
 
 const FleetMap = ({ fullSize = false }) => {
+  const mapRef = useRef(null);
+  const mapInstance = useRef(null);
   const [selectedBus, setSelectedBus] = useState(null);
   const [mapFilter, setMapFilter] = useState('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
+  const [realTimeMarkers, setRealTimeMarkers] = useState({});
 
-  // Mock bus data - in real app, this would come from API
+  // Mock bus data with real coordinates
   const [buses, setBuses] = useState([
     {
       id: 'BUS001',
@@ -78,14 +82,129 @@ const FleetMap = ({ fullSize = false }) => {
     }
   ]);
 
+  // Initialize Leaflet map
+  useEffect(() => {
+    if (!mapRef.current || mapInstance.current) return;
+
+    // Load Leaflet dynamically
+    const leafletCSS = document.createElement('link');
+    leafletCSS.rel = 'stylesheet';
+    leafletCSS.href = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.css';
+    document.head.appendChild(leafletCSS);
+
+    const leafletJS = document.createElement('script');
+    leafletJS.src = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js';
+    leafletJS.onload = () => {
+      if (window.L && mapRef.current) {
+        // Initialize map centered on Delhi NCR
+        mapInstance.current = window.L.map(mapRef.current).setView([28.6139, 77.2090], 10);
+
+        // Add OpenStreetMap tile layer
+        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(mapInstance.current);
+
+        // Add bus markers
+        addBusMarkers();
+
+        // Get user location if available
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const { latitude, longitude } = position.coords;
+              setUserLocation({ lat: latitude, lng: longitude });
+              
+              // Add user location marker
+              const userMarker = window.L.marker([latitude, longitude], {
+                icon: window.L.divIcon({
+                  className: 'user-location-marker',
+                  html: '<div style="background: #3b82f6; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                  iconSize: [16, 16],
+                  iconAnchor: [8, 8]
+                })
+              }).addTo(mapInstance.current);
+              
+              userMarker.bindPopup('Your Location');
+            },
+            (error) => console.log('Geolocation error:', error)
+          );
+        }
+      }
+    };
+    document.head.appendChild(leafletJS);
+
+    return () => {
+      if (mapInstance.current) {
+        mapInstance.current.remove();
+        mapInstance.current = null;
+      }
+    };
+  }, []);
+
+  const addBusMarkers = () => {
+    if (!window.L || !mapInstance.current) return;
+
+    // Clear existing markers
+    Object.values(realTimeMarkers).forEach(marker => {
+      mapInstance.current.removeLayer(marker);
+    });
+
+    const newMarkers = {};
+    const filteredBuses = buses.filter(bus => {
+      if (mapFilter === 'all') return true;
+      return bus.status === mapFilter;
+    });
+
+    filteredBuses.forEach(bus => {
+      const iconColor = getStatusColor(bus.status);
+      const marker = window.L.marker([bus.location.lat, bus.location.lng], {
+        icon: window.L.divIcon({
+          className: 'bus-marker',
+          html: `<div style="background: ${iconColor}; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3); position: relative;">
+                   <div style="position: absolute; top: -25px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; white-space: nowrap;">${bus.id}</div>
+                 </div>`,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11]
+        })
+      }).addTo(mapInstance.current);
+
+      marker.bindPopup(`
+        <div style="min-width: 200px;">
+          <h4 style="margin: 0 0 8px 0; color: #1f2937;">${bus.id} - ${bus.route}</h4>
+          <p style="margin: 4px 0; color: #6b7280;"><strong>Driver:</strong> ${bus.driver}</p>
+          <p style="margin: 4px 0; color: #6b7280;"><strong>Location:</strong> ${bus.location.address}</p>
+          <p style="margin: 4px 0; color: #6b7280;"><strong>Occupancy:</strong> ${bus.occupancy}%</p>
+          <p style="margin: 4px 0; color: #6b7280;"><strong>Next Stop:</strong> ${bus.nextStop}</p>
+          <p style="margin: 4px 0; color: #6b7280;"><strong>Status:</strong> <span style="color: ${iconColor}; font-weight: bold;">${getStatusText(bus.status)}</span></p>
+        </div>
+      `);
+
+      marker.on('click', () => setSelectedBus(bus));
+      newMarkers[bus.id] = marker;
+    });
+
+    setRealTimeMarkers(newMarkers);
+  };
+
+  // Update markers when buses or filter changes
+  useEffect(() => {
+    if (mapInstance.current && window.L) {
+      addBusMarkers();
+    }
+  }, [buses, mapFilter]);
+
   const handleRefresh = () => {
     setIsRefreshing(true);
-    // Simulate API call
+    // Simulate API call to update bus positions
     setTimeout(() => {
-      // Update bus positions slightly
       setBuses(prev => prev.map(bus => ({
         ...bus,
         occupancy: Math.max(0, Math.min(100, bus.occupancy + Math.random() * 10 - 5)),
+        location: {
+          ...bus.location,
+          lat: bus.location.lat + (Math.random() - 0.5) * 0.01,
+          lng: bus.location.lng + (Math.random() - 0.5) * 0.01
+        },
         lastUpdate: new Date().toLocaleTimeString()
       })));
       setIsRefreshing(false);
@@ -94,11 +213,11 @@ const FleetMap = ({ fullSize = false }) => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'active': return 'bg-green-500';
-      case 'delayed': return 'bg-yellow-500';
-      case 'emergency': return 'bg-red-500';
-      case 'inactive': return 'bg-gray-500';
-      default: return 'bg-gray-500';
+      case 'active': return '#10b981';
+      case 'delayed': return '#f59e0b';
+      case 'emergency': return '#ef4444';
+      case 'inactive': return '#6b7280';
+      default: return '#6b7280';
     }
   };
 
@@ -116,25 +235,6 @@ const FleetMap = ({ fullSize = false }) => {
     if (mapFilter === 'all') return true;
     return bus.status === mapFilter;
   });
-
-  const BusMarker = ({ bus, onClick }) => (
-    <div
-      className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all hover:scale-110 ${
-        selectedBus?.id === bus.id ? 'z-20 scale-125' : 'z-10'
-      }`}
-      style={{
-        left: `${20 + (bus.location.lng - 77) * 800}px`,
-        top: `${100 + (28.7 - bus.location.lat) * 800}px`,
-      }}
-      onClick={() => onClick(bus)}
-    >
-      <div className={`w-4 h-4 rounded-full ${getStatusColor(bus.status)} border-2 border-white shadow-lg animate-pulse`}>
-      </div>
-      <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-        {bus.id}
-      </div>
-    </div>
-  );
 
   return (
     <Card className={`${fullSize ? 'h-[calc(100vh-8rem)]' : 'h-96'}`}>
@@ -171,75 +271,37 @@ const FleetMap = ({ fullSize = false }) => {
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="relative bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-800 dark:to-slate-900 overflow-hidden">
-          {/* Simplified Map Background */}
-          <div className="w-full h-full min-h-80 relative">
-            {/* Map Grid */}
-            <div className="absolute inset-0 opacity-20">
-              <svg width="100%" height="100%" className="text-gray-400">
-                <defs>
-                  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" strokeWidth="1"/>
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#grid)" />
-              </svg>
-            </div>
-
-            {/* Major Roads/Routes */}
-            <svg className="absolute inset-0 w-full h-full">
-              <path
-                d="M 50 150 Q 200 100 350 150 T 600 200"
-                fill="none"
-                stroke="#3b82f6"
-                strokeWidth="3"
-                opacity="0.6"
-              />
-              <path
-                d="M 100 80 Q 300 120 500 100 T 700 150"
-                fill="none"
-                stroke="#10b981"
-                strokeWidth="3"
-                opacity="0.6"
-              />
-              <path
-                d="M 80 250 Q 250 200 450 240 T 650 280"
-                fill="none"
-                stroke="#f59e0b"
-                strokeWidth="3"
-                opacity="0.6"
-              />
-            </svg>
-
-            {/* Bus Markers */}
-            {filteredBuses.map((bus) => (
-              <BusMarker
-                key={bus.id}
-                bus={bus}
-                onClick={setSelectedBus}
-              />
-            ))}
-
-            {/* Map Legend */}
-            <div className="absolute bottom-4 left-4 bg-white dark:bg-slate-800 rounded-lg p-3 shadow-lg border">
-              <h4 className="text-sm font-semibold mb-2">Status Legend</h4>
-              <div className="space-y-1">
-                <div className="flex items-center space-x-2 text-xs">
-                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                  <span>On Schedule</span>
-                </div>
-                <div className="flex items-center space-x-2 text-xs">
-                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                  <span>Delayed</span>
-                </div>
-                <div className="flex items-center space-x-2 text-xs">
-                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                  <span>Emergency</span>
-                </div>
-                <div className="flex items-center space-x-2 text-xs">
-                  <div className="w-3 h-3 rounded-full bg-gray-500"></div>
-                  <span>Inactive</span>
-                </div>
+        <div className="relative overflow-hidden rounded-b-lg">
+          {/* Leaflet Map Container */}
+          <div 
+            ref={mapRef} 
+            className={`w-full ${fullSize ? 'h-[calc(100vh-12rem)]' : 'h-80'} bg-gray-100`}
+            style={{ minHeight: '300px' }}
+          />
+          
+          {/* Map Legend */}
+          <div className="absolute bottom-4 left-4 bg-white dark:bg-slate-800 rounded-lg p-3 shadow-lg border z-[1000]">
+            <h4 className="text-sm font-semibold mb-2">Status Legend</h4>
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2 text-xs">
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                <span>On Schedule</span>
+              </div>
+              <div className="flex items-center space-x-2 text-xs">
+                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                <span>Delayed</span>
+              </div>
+              <div className="flex items-center space-x-2 text-xs">
+                <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                <span>Emergency</span>
+              </div>
+              <div className="flex items-center space-x-2 text-xs">
+                <div className="w-3 h-3 rounded-full bg-gray-500"></div>
+                <span>Inactive</span>
+              </div>
+              <div className="flex items-center space-x-2 text-xs">
+                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                <span>Your Location</span>
               </div>
             </div>
           </div>
