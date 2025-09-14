@@ -35,7 +35,11 @@ import FleetMap from './FleetMap';
 import StatsCards from './StatsCards';
 import RealtimeAlerts from './RealtimeAlerts';
 import RouteManagement from './RouteManagement';
-import ComplianceMonitor from './ComplianceMonitor';
+import DigitalTicketing from './DigitalTicketing';
+import CrowdAnalytics from './CrowdAnalytics';
+import EmergencyManagement from './EmergencyManagement';
+import EnvironmentalReporting from './EnvironmentalReporting';
+import StaffManagement from './StaffManagement';
 
 const Dashboard = () => {
   const { theme, toggleTheme } = useTheme();
