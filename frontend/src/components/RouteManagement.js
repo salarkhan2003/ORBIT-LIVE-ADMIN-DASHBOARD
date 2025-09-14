@@ -14,11 +14,13 @@ import {
   Trash2,
   BarChart3,
   Navigation,
-  Bus
+  Bus,
+  Save,
+  X
 } from 'lucide-react';
 
 const RouteManagement = () => {
-  const [routes] = useState([
+  const [routes, setRoutes] = useState([
     {
       id: 'ROUTE001',
       name: 'Route 42',
@@ -90,6 +92,18 @@ const RouteManagement = () => {
     }
   ]);
 
+  const [showAddRoute, setShowAddRoute] = useState(false);
+  const [newRoute, setNewRoute] = useState({
+    name: '',
+    description: '',
+    distance: '',
+    estimatedTime: '',
+    stops: '',
+    firstBus: '',
+    lastBus: '',
+    frequency: ''
+  });
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'active': return 'default';
@@ -111,6 +125,52 @@ const RouteManagement = () => {
     return 'text-green-600';
   };
 
+  const handleAddRoute = () => {
+    if (!newRoute.name || !newRoute.description) return;
+    
+    const routeId = `ROUTE${String(routes.length + 1).padStart(3, '0')}`;
+    const route = {
+      id: routeId,
+      name: newRoute.name,
+      description: newRoute.description,
+      distance: newRoute.distance || '0 km',
+      estimatedTime: newRoute.estimatedTime || '0 min',
+      stops: parseInt(newRoute.stops) || 0,
+      activeBuses: 0,
+      avgCrowd: 0,
+      efficiency: 0,
+      revenue: 0,
+      status: 'inactive',
+      schedule: {
+        firstBus: newRoute.firstBus || '06:00',
+        lastBus: newRoute.lastBus || '22:00',
+        frequency: newRoute.frequency || '10-15 min'
+      },
+      analytics: {
+        dailyRiders: 0,
+        peakHours: 'TBD',
+        satisfaction: 0
+      }
+    };
+    
+    setRoutes([...routes, route]);
+    setNewRoute({
+      name: '',
+      description: '',
+      distance: '',
+      estimatedTime: '',
+      stops: '',
+      firstBus: '',
+      lastBus: '',
+      frequency: ''
+    });
+    setShowAddRoute(false);
+  };
+
+  const handleDeleteRoute = (routeId) => {
+    setRoutes(routes.filter(route => route.id !== routeId));
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -119,11 +179,119 @@ const RouteManagement = () => {
           <h2 className="text-2xl font-bold">Route Management</h2>
           <p className="text-muted-foreground">Manage and optimize bus routes</p>
         </div>
-        <Button className="flex items-center space-x-2">
+        <Button 
+          className="flex items-center space-x-2"
+          onClick={() => setShowAddRoute(true)}
+        >
           <Plus className="w-4 h-4" />
           <span>Add New Route</span>
         </Button>
       </div>
+
+      {/* Add New Route Modal */}
+      {showAddRoute && (
+        <Card className="border-2 border-blue-200 bg-blue-50 dark:bg-blue-950">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Add New Route</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setShowAddRoute(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Route Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g., Route 50"
+                  className="w-full mt-1 px-3 py-2 border border-border rounded-md"
+                  value={newRoute.name}
+                  onChange={(e) => setNewRoute({...newRoute, name: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Description *</label>
+                <input
+                  type="text"
+                  placeholder="e.g., Tech Hub Connector"
+                  className="w-full mt-1 px-3 py-2 border border-border rounded-md"
+                  value={newRoute.description}
+                  onChange={(e) => setNewRoute({...newRoute, description: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Distance</label>
+                <input
+                  type="text"
+                  placeholder="e.g., 35.2 km"
+                  className="w-full mt-1 px-3 py-2 border border-border rounded-md"
+                  value={newRoute.distance}
+                  onChange={(e) => setNewRoute({...newRoute, distance: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Estimated Time</label>
+                <input
+                  type="text"
+                  placeholder="e.g., 75 min"
+                  className="w-full mt-1 px-3 py-2 border border-border rounded-md"
+                  value={newRoute.estimatedTime}
+                  onChange={(e) => setNewRoute({...newRoute, estimatedTime: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Number of Stops</label>
+                <input
+                  type="number"
+                  placeholder="e.g., 28"
+                  className="w-full mt-1 px-3 py-2 border border-border rounded-md"
+                  value={newRoute.stops}
+                  onChange={(e) => setNewRoute({...newRoute, stops: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Frequency</label>
+                <input
+                  type="text"
+                  placeholder="e.g., 12-18 min"
+                  className="w-full mt-1 px-3 py-2 border border-border rounded-md"
+                  value={newRoute.frequency}
+                  onChange={(e) => setNewRoute({...newRoute, frequency: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">First Bus</label>
+                <input
+                  type="time"
+                  className="w-full mt-1 px-3 py-2 border border-border rounded-md"
+                  value={newRoute.firstBus}
+                  onChange={(e) => setNewRoute({...newRoute, firstBus: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Last Bus</label>
+                <input
+                  type="time"
+                  className="w-full mt-1 px-3 py-2 border border-border rounded-md"
+                  value={newRoute.lastBus}
+                  onChange={(e) => setNewRoute({...newRoute, lastBus: e.target.value})}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2 mt-6">
+              <Button variant="outline" onClick={() => setShowAddRoute(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddRoute}>
+                <Save className="w-4 h-4 mr-2" />
+                Add Route
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
@@ -219,6 +387,14 @@ const RouteManagement = () => {
                     <Button variant="outline" size="sm" className="flex-1">
                       <BarChart3 className="w-3 h-3 mr-1" />
                       Analytics
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleDeleteRoute(route.id)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="w-3 h-3" />
                     </Button>
                   </div>
                 </CardContent>
