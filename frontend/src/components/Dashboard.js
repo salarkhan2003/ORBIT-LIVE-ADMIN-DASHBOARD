@@ -40,6 +40,8 @@ import CrowdAnalytics from './CrowdAnalytics';
 import EmergencyManagement from './EmergencyManagement';
 import EnvironmentalReporting from './EnvironmentalReporting';
 import StaffManagement from './StaffManagement';
+import FeedbackManagement from './FeedbackManagement';
+import ReportsExport from './ReportsExport';
 
 const Dashboard = () => {
   const { theme, toggleTheme } = useTheme();
