@@ -96,6 +96,10 @@ const Dashboard = () => {
         return <EnvironmentalReporting />;
       case 'staff':
         return <StaffManagement />;
+      case 'feedback':
+        return <FeedbackManagement />;
+      case 'reports':
+        return <ReportsExport />;
       default:
         return (
           <div className="flex items-center justify-center h-96">
