@@ -84,8 +84,16 @@ const Dashboard = () => {
         return <FleetMap fullSize />;
       case 'routes':
         return <RouteManagement />;
-      case 'compliance':
-        return <ComplianceMonitor />;
+      case 'tickets':
+        return <DigitalTicketing />;
+      case 'crowd':
+        return <CrowdAnalytics />;
+      case 'emergency':
+        return <EmergencyManagement />;
+      case 'environment':
+        return <EnvironmentalReporting />;
+      case 'staff':
+        return <StaffManagement />;
       default:
         return (
           <div className="flex items-center justify-center h-96">
