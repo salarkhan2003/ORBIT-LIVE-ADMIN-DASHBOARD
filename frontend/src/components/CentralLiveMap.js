@@ -406,23 +406,23 @@ const CentralLiveMap = ({ fullSize = false }) => {
   });
 
   return (
-    <Card className="h-full">
-      <CardHeader className="pb-2 pt-3">
+    <Card className="h-full flex flex-col">
+      <CardHeader className="pb-2 pt-3 flex-shrink-0">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex flex-wrap items-center gap-2">
-            <MapPin className="w-4 h-4" />
-            <span className="text-sm">Central Live Map</span>
+            <MapPin className="w-5 h-5" />
+            <span className="text-base font-semibold">Central Live Map</span>
             <Badge variant="outline" className="text-xs">
               {filteredBuses.length} buses
             </Badge>
           </CardTitle>
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex flex-wrap items-center gap-2">
             <select
               value={mapFilter}
               onChange={(e) => setMapFilter(e.target.value)}
-              className="text-xs border border-border rounded px-1.5 py-1 bg-background"
+              className="text-sm border border-border rounded px-2 py-1 bg-background"
             >
-              <option value="all">All</option>
+              <option value="all">All Buses</option>
               <option value="active">Active</option>
               <option value="delayed">Delayed</option>
               <option value="emergency">Emergency</option>
@@ -431,29 +431,30 @@ const CentralLiveMap = ({ fullSize = false }) => {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0"
+              className="h-8 w-8 p-0"
               onClick={() => setIsPlaying(!isPlaying)}
             >
-              {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0"
+              className="h-8 w-8 p-0"
               onClick={handleRefresh}
               disabled={isRefreshing}
             >
-              <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="p-0 h-[calc(100%-3.5rem)]">
+      <CardContent className="p-0 flex-1 min-h-0">
         <div className="relative overflow-hidden rounded-b-lg h-full">
           {/* Leaflet Map Container */}
           <div 
             ref={mapRef} 
-            className="w-full h-full bg-gray-100"
+            className="w-full h-full min-h-[400px] bg-gray-100"
+            style={{ minHeight: '400px' }}
           />
           
           {/* Map Legend */}
