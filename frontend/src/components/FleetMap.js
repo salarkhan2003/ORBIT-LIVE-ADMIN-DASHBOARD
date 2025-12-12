@@ -23,56 +23,56 @@ const FleetMap = ({ fullSize = false }) => {
   const [userLocation, setUserLocation] = useState(null);
   const [realTimeMarkers, setRealTimeMarkers] = useState({});
 
-  // Mock bus data with real coordinates
+  // Mock bus data with real coordinates for Vijayawada and Visakhapatnam
   const [buses, setBuses] = useState([
     {
-      id: 'BUS001',
-      route: 'Route 42',
-      location: { lat: 28.6139, lng: 77.2090, address: 'Connaught Place, Delhi' },
+      id: 'APSRTC001',
+      route: 'Route 12',
+      location: { lat: 16.5062, lng: 80.6480, address: 'Vijayawada Railway Station' },
       status: 'active',
       occupancy: 67,
       driver: 'Rajesh Kumar',
-      nextStop: 'India Gate',
+      nextStop: 'Benz Circle',
       delay: 0,
       lastUpdate: new Date().toLocaleTimeString()
     },
     {
-      id: 'BUS002',
+      id: 'APSRTC002',
       route: 'Route 15',
-      location: { lat: 28.5355, lng: 77.3910, address: 'Noida Sector 18' },
+      location: { lat: 16.5119, lng: 80.6332, address: 'MG Road, Vijayawada' },
       status: 'delayed',
       occupancy: 85,
       driver: 'Suresh Singh',
-      nextStop: 'Metro Station',
+      nextStop: 'Governorpet',
       delay: 8,
       lastUpdate: new Date().toLocaleTimeString()
     },
     {
-      id: 'BUS003',
+      id: 'APSRTC003',
       route: 'Route 28',
-      location: { lat: 28.4595, lng: 77.0266, address: 'Gurgaon Cyber City' },
+      location: { lat: 17.6868, lng: 83.2185, address: 'Visakhapatnam Port' },
       status: 'emergency',
       occupancy: 34,
       driver: 'Amit Sharma',
-      nextStop: 'Hospital',
+      nextStop: 'Railway New Colony',
       delay: 15,
       lastUpdate: new Date().toLocaleTimeString()
     },
     {
-      id: 'BUS004',
+      id: 'APSRTC004',
       route: 'Route 7',
-      location: { lat: 28.7041, lng: 77.1025, address: 'Delhi University' },
+      location: { lat: 17.7132, lng: 83.2969, address: 'Visakhapatnam Airport' },
       status: 'active',
       occupancy: 45,
       driver: 'Vinod Yadav',
-      nextStop: 'Library',
+      nextStop: 'Gajuwaka',
       delay: 2,
       lastUpdate: new Date().toLocaleTimeString()
     },
     {
-      id: 'BUS005',
+      id: 'APSRTC005',
       route: 'Route 33',
-      location: { lat: 28.6692, lng: 77.4538, address: 'Laxmi Nagar' },
+      location: { lat: 16.4975, lng: 80.6559, address: 'Vijayawada Bus Stand' },
       status: 'inactive',
       occupancy: 0,
       driver: 'Ravi Gupta',
@@ -96,8 +96,8 @@ const FleetMap = ({ fullSize = false }) => {
     leafletJS.src = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js';
     leafletJS.onload = () => {
       if (window.L && mapRef.current) {
-        // Initialize map centered on Delhi NCR
-        mapInstance.current = window.L.map(mapRef.current).setView([28.6139, 77.2090], 10);
+        // Initialize map centered on Vijayawada
+        mapInstance.current = window.L.map(mapRef.current).setView([16.5062, 80.6480], 13);
 
         // Add OpenStreetMap tile layer
         window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -202,8 +202,8 @@ const FleetMap = ({ fullSize = false }) => {
         occupancy: Math.max(0, Math.min(100, bus.occupancy + Math.random() * 10 - 5)),
         location: {
           ...bus.location,
-          lat: bus.location.lat + (Math.random() - 0.5) * 0.01,
-          lng: bus.location.lng + (Math.random() - 0.5) * 0.01
+          lat: bus.location.lat + (Math.random() - 0.5) * 0.001,
+          lng: bus.location.lng + (Math.random() - 0.5) * 0.001
         },
         lastUpdate: new Date().toLocaleTimeString()
       })));
@@ -237,17 +237,17 @@ const FleetMap = ({ fullSize = false }) => {
   });
 
   return (
-    <Card className={`${fullSize ? 'h-[calc(100vh-8rem)]' : 'h-96'}`}>
+    <Card className={fullSize ? "h-full" : "h-96"}>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <CardTitle className="flex flex-wrap items-center gap-2">
             <MapPin className="w-5 h-5" />
             <span>Live Fleet Map</span>
-            <Badge variant="outline" className="ml-2">
+            <Badge variant="outline">
               {filteredBuses.length} buses
             </Badge>
           </CardTitle>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <select
               value={mapFilter}
               onChange={(e) => setMapFilter(e.target.value)}
@@ -270,13 +270,13 @@ const FleetMap = ({ fullSize = false }) => {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="p-0">
-        <div className="relative overflow-hidden rounded-b-lg">
+      <CardContent className="p-0 h-[calc(100%-4rem)]">
+        <div className="relative overflow-hidden rounded-b-lg h-full">
           {/* Leaflet Map Container */}
           <div 
             ref={mapRef} 
-            className={`w-full ${fullSize ? 'h-[calc(100vh-12rem)]' : 'h-80'} bg-gray-100`}
-            style={{ minHeight: '300px' }}
+            className="w-full h-full bg-gray-100"
+            style={fullSize ? {} : { minHeight: '300px' }}
           />
           
           {/* Map Legend */}
@@ -310,7 +310,7 @@ const FleetMap = ({ fullSize = false }) => {
         {/* Selected Bus Details */}
         {selectedBus && (
           <div className="border-t border-border p-4 bg-muted/50">
-            <div className="flex items-start justify-between mb-3">
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
               <div>
                 <h4 className="font-semibold text-lg">{selectedBus.id}</h4>
                 <p className="text-sm text-muted-foreground">{selectedBus.route}</p>
@@ -321,7 +321,7 @@ const FleetMap = ({ fullSize = false }) => {
               </Badge>
             </div>
             
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <MapPin className="w-4 h-4 text-muted-foreground" />
@@ -346,7 +346,7 @@ const FleetMap = ({ fullSize = false }) => {
               </div>
             </div>
             
-            <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+            <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center justify-between text-xs text-muted-foreground gap-2">
               <span>Driver: {selectedBus.driver}</span>
               <span>Updated: {selectedBus.lastUpdate}</span>
             </div>
