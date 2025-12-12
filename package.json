@@ -1,0 +1,14 @@
+{
+  "name": "orbit-live-admin-dashboard",
+  "version": "1.0.0",
+  "description": "APSRTC Admin Dashboard for Route Planners, Control Room staff, and Depot Officials",
+  "scripts": {
+    "start": "cd frontend && npm start",
+    "build": "cd frontend && npm run build",
+    "test": "cd frontend && npm test",
+    "install": "cd frontend && npm install"
+  },
+  "engines": {
+    "node": ">=14.x"
+  }
+}
