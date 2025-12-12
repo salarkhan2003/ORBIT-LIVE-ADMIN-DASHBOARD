@@ -18,63 +18,197 @@ const FleetMap = ({ fullSize = false }) => {
   const [mapFilter, setMapFilter] = useState('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const searchInputRef = useRef(null);
 
-  // Mock bus data with real coordinates for Vijayawada and Visakhapatnam
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
+  // Mock bus data with real coordinates - Vijayawada to Visakhapatnam route
   const [buses, setBuses] = useState([
+    // Vijayawada area buses
     {
       id: 'APSRTC001',
-      route: 'Route 12',
+      route: 'Route 12 (VJA-VSP)',
       location: { lat: 16.5062, lng: 80.6480, address: 'Vijayawada Railway Station' },
       status: 'active',
       occupancy: 67,
       driver: 'Rajesh Kumar',
       nextStop: 'Benz Circle',
       delay: 0,
-      lastUpdate: new Date().toLocaleTimeString()
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 45
     },
     {
       id: 'APSRTC002',
-      route: 'Route 15',
+      route: 'Route 15 (VJA-VSP)',
       location: { lat: 16.5119, lng: 80.6332, address: 'MG Road, Vijayawada' },
       status: 'delayed',
       occupancy: 85,
       driver: 'Suresh Singh',
       nextStop: 'Governorpet',
       delay: 8,
-      lastUpdate: new Date().toLocaleTimeString()
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 35
     },
     {
       id: 'APSRTC003',
-      route: 'Route 28',
+      route: 'Route 12 (VJA-VSP)',
+      location: { lat: 16.4975, lng: 80.6559, address: 'Vijayawada Bus Stand' },
+      status: 'active',
+      occupancy: 52,
+      driver: 'Ravi Gupta',
+      nextStop: 'Eluru',
+      delay: 0,
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 50
+    },
+    // Mid-route buses (between Vijayawada and Visakhapatnam)
+    {
+      id: 'APSRTC004',
+      route: 'Route 12 (VJA-VSP)',
+      location: { lat: 16.7107, lng: 81.1048, address: 'Eluru Junction' },
+      status: 'active',
+      occupancy: 73,
+      driver: 'Prakash Reddy',
+      nextStop: 'Rajahmundry',
+      delay: 3,
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 55
+    },
+    {
+      id: 'APSRTC005',
+      route: 'Route 15 (VJA-VSP)',
+      location: { lat: 17.0005, lng: 81.8040, address: 'Rajahmundry' },
+      status: 'active',
+      occupancy: 68,
+      driver: 'Venkat Rao',
+      nextStop: 'Tuni',
+      delay: 0,
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 60
+    },
+    {
+      id: 'APSRTC006',
+      route: 'Route 12 (VJA-VSP)',
+      location: { lat: 17.3505, lng: 82.4520, address: 'Tuni' },
+      status: 'active',
+      occupancy: 55,
+      driver: 'Krishna Murthy',
+      nextStop: 'Anakapalle',
+      delay: 2,
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 58
+    },
+    {
+      id: 'APSRTC007',
+      route: 'Route 15 (VJA-VSP)',
+      location: { lat: 17.5449, lng: 82.9388, address: 'Anakapalle' },
+      status: 'active',
+      occupancy: 62,
+      driver: 'Srinivas Reddy',
+      nextStop: 'Visakhapatnam',
+      delay: 0,
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 52
+    },
+    // Visakhapatnam area buses
+    {
+      id: 'APSRTC008',
+      route: 'Route 28 (Local)',
       location: { lat: 17.6868, lng: 83.2185, address: 'Visakhapatnam Port' },
       status: 'emergency',
       occupancy: 34,
       driver: 'Amit Sharma',
       nextStop: 'Railway New Colony',
       delay: 15,
-      lastUpdate: new Date().toLocaleTimeString()
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 0
     },
     {
-      id: 'APSRTC004',
-      route: 'Route 7',
+      id: 'APSRTC009',
+      route: 'Route 7 (Local)',
       location: { lat: 17.7132, lng: 83.2969, address: 'Visakhapatnam Airport' },
       status: 'active',
       occupancy: 45,
       driver: 'Vinod Yadav',
       nextStop: 'Gajuwaka',
       delay: 2,
-      lastUpdate: new Date().toLocaleTimeString()
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 40
     },
     {
-      id: 'APSRTC005',
-      route: 'Route 33',
-      location: { lat: 16.4975, lng: 80.6559, address: 'Vijayawada Bus Stand' },
-      status: 'inactive',
-      occupancy: 0,
-      driver: 'Ravi Gupta',
+      id: 'APSRTC010',
+      route: 'Route 28 (Local)',
+      location: { lat: 17.7231, lng: 83.3012, address: 'Gajuwaka' },
+      status: 'active',
+      occupancy: 78,
+      driver: 'Ramesh Babu',
+      nextStop: 'Madhurawada',
+      delay: 0,
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 35
+    },
+    {
+      id: 'APSRTC011',
+      route: 'Route 7 (Local)',
+      location: { lat: 17.7306, lng: 83.3250, address: 'MVP Colony' },
+      status: 'active',
+      occupancy: 82,
+      driver: 'Naresh Kumar',
+      nextStop: 'Beach Road',
+      delay: 0,
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 30
+    },
+    {
+      id: 'APSRTC012',
+      route: 'Route 12 (VJA-VSP)',
+      location: { lat: 17.6869, lng: 83.2185, address: 'Visakhapatnam RTC Complex' },
+      status: 'active',
+      occupancy: 48,
+      driver: 'Mohan Rao',
       nextStop: 'Depot',
       delay: 0,
-      lastUpdate: new Date().toLocaleTimeString()
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 25
+    },
+    // Return journey buses
+    {
+      id: 'APSRTC013',
+      route: 'Route 15 (VSP-VJA)',
+      location: { lat: 17.2403, lng: 82.2397, address: 'Peddapuram' },
+      status: 'active',
+      occupancy: 71,
+      driver: 'Satish Reddy',
+      nextStop: 'Rajahmundry',
+      delay: 5,
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 48
+    },
+    {
+      id: 'APSRTC014',
+      route: 'Route 12 (VSP-VJA)',
+      location: { lat: 16.9891, lng: 81.7780, address: 'Rajahmundry' },
+      status: 'active',
+      occupancy: 65,
+      driver: 'Balaji Rao',
+      nextStop: 'Eluru',
+      delay: 0,
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 55
+    },
+    {
+      id: 'APSRTC015',
+      route: 'Route 15 (VSP-VJA)',
+      location: { lat: 16.7160, lng: 81.0969, address: 'Eluru' },
+      status: 'delayed',
+      occupancy: 88,
+      driver: 'Sudheer Kumar',
+      nextStop: 'Vijayawada',
+      delay: 12,
+      lastUpdate: new Date().toLocaleTimeString(),
+      speed: 42
     }
   ]);
 
