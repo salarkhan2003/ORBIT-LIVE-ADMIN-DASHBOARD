@@ -94,24 +94,26 @@ const RecommendationEngine = () => {
 
   const simulateRecommendation = (recId) => {
     const recommendation = recommendations.find(r => r.id === recId);
+    if (!recommendation) return;
+
+    // Calculate impact
+    const otpChange = parseInt(recommendation.kpiImpact.otp);
+    const delayChange = parseInt(recommendation.kpiImpact.delay.replace(' min', ''));
+    const occupancyChange = parseInt(recommendation.kpiImpact.occupancy);
 
     const results = {
-      id: recId,
+      netBenefit: Math.abs(delayChange),
+      affectedRoutes: 1,
+      estimatedCost: `₹${Math.abs(delayChange) * 300}/day`,
       before: {
         otp: 82,
         avgDelay: 12,
         fleetUtilization: 78
       },
       after: {
-        otp: 82 + (recommendation.kpiImpact.otp.includes('+') ?
-          parseInt(recommendation.kpiImpact.otp) :
-          -parseInt(recommendation.kpiImpact.otp)),
-        avgDelay: 12 - (recommendation.kpiImpact.delay.includes('-') ?
-          -parseInt(recommendation.kpiImpact.delay) :
-          parseInt(recommendation.kpiImpact.delay)),
-        fleetUtilization: 78 + (recommendation.kpiImpact.occupancy.includes('-') ?
-          -parseInt(recommendation.kpiImpact.occupancy) :
-          parseInt(recommendation.kpiImpact.occupancy))
+        otp: 82 + otpChange,
+        avgDelay: 12 + delayChange,
+        fleetUtilization: 78 + occupancyChange
       }
     };
 
@@ -275,8 +277,10 @@ const RecommendationEngine = () => {
                   </div>
                   <span className="text-sm font-bold text-foreground">Net Benefit</span>
                 </div>
-                <p className="text-3xl font-black text-blue-700 dark:text-blue-400 mb-2">
-                  {simulationResults.netBenefit >= 0 ? '+' : ''}{simulationResults.netBenefit} min
+                <p className="text-2xl font-black text-blue-700 dark:text-blue-400 mb-2">
+                  {typeof simulationResults.netBenefit === 'number' ? 
+                    `${simulationResults.netBenefit >= 0 ? '+' : ''}${simulationResults.netBenefit} min` : 
+                    simulationResults.netBenefit}
                 </p>
                 <p className="text-sm text-muted-foreground">Average time saved per trip</p>
               </div>
@@ -286,10 +290,12 @@ const RecommendationEngine = () => {
                   <div className="p-2 bg-purple-600 rounded-lg">
                     <MapPin className="w-5 h-5 text-white" />
                   </div>
-                  <span className="text-base font-bold text-foreground">Affected Routes</span>
+                  <span className="text-sm font-bold text-foreground">Affected Routes</span>
                 </div>
-                <p className="text-3xl font-black text-purple-700 dark:text-purple-400 mb-2">
-                  {simulationResults.affectedRoutes}
+                <p className="text-2xl font-black text-purple-700 dark:text-purple-400 mb-2">
+                  {typeof simulationResults.affectedRoutes === 'number' ? 
+                    simulationResults.affectedRoutes : 
+                    simulationResults.affectedRoutes}
                 </p>
                 <p className="text-sm text-muted-foreground">Routes impacted by changes</p>
               </div>
@@ -299,10 +305,10 @@ const RecommendationEngine = () => {
                   <div className="p-2 bg-amber-600 rounded-lg">
                     <BarChart className="w-5 h-5 text-white" />
                   </div>
-                  <span className="text-base font-bold text-foreground">Estimated Cost</span>
+                  <span className="text-sm font-bold text-foreground">Estimated Cost</span>
                 </div>
-                <p className="text-3xl font-black text-amber-700 dark:text-amber-400 mb-2">
-                  {simulationResults.estimatedCost}
+                <p className="text-2xl font-black text-amber-700 dark:text-amber-400 mb-2">
+                  {simulationResults.estimatedCost || 'N/A'}
                 </p>
                 <p className="text-sm text-muted-foreground">Additional operational cost</p>
               </div>
@@ -314,10 +320,9 @@ const RecommendationEngine = () => {
                     <BarChart className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <p className="text-base font-bold mb-2 text-foreground">Simulation Insights</p>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      Click <span className="font-semibold text-foreground">"Simulate"</span> on any recommendation to see detailed impact analysis and projected KPI changes. 
-                      The simulation will show before/after comparisons and help you make data-driven decisions.
+                    <p className="text-sm font-bold mb-1 text-foreground">Simulation Insights</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Click <span className="font-semibold text-foreground">"Simulate"</span> on any recommendation to see detailed impact analysis and projected KPI changes.
                     </p>
                   </div>
                 </div>

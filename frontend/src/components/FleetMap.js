@@ -2,26 +2,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { 
-  MapPin, 
-  Bus, 
-  Users, 
-  Clock, 
-  AlertTriangle,
+import {
+  MapPin,
+  Users,
+  Clock,
   Navigation,
-  Maximize2,
-  Filter,
   RefreshCw
 } from 'lucide-react';
 
 const FleetMap = ({ fullSize = false }) => {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
+  const markersRef = useRef({});
   const [selectedBus, setSelectedBus] = useState(null);
   const [mapFilter, setMapFilter] = useState('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [userLocation, setUserLocation] = useState(null);
-  const [realTimeMarkers, setRealTimeMarkers] = useState({});
+  const [mapLoaded, setMapLoaded] = useState(false);
 
   // Mock bus data with real coordinates for Vijayawada and Visakhapatnam
   const [buses, setBuses] = useState([
@@ -86,52 +82,36 @@ const FleetMap = ({ fullSize = false }) => {
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
 
-    // Load Leaflet dynamically
-    const leafletCSS = document.createElement('link');
-    leafletCSS.rel = 'stylesheet';
-    leafletCSS.href = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.css';
-    document.head.appendChild(leafletCSS);
+    // Check if Leaflet is already loaded
+    if (window.L) {
+      initializeMap();
+      return;
+    }
 
-    const leafletJS = document.createElement('script');
-    leafletJS.src = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js';
-    leafletJS.onload = () => {
-      if (window.L && mapRef.current) {
-        // Initialize map centered on Vijayawada
-        mapInstance.current = window.L.map(mapRef.current).setView([16.5062, 80.6480], 13);
+    // Load Leaflet CSS
+    if (!document.querySelector('link[href*="leaflet"]')) {
+      const leafletCSS = document.createElement('link');
+      leafletCSS.rel = 'stylesheet';
+      leafletCSS.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      leafletCSS.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+      leafletCSS.crossOrigin = '';
+      document.head.appendChild(leafletCSS);
+    }
 
-        // Add OpenStreetMap tile layer
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(mapInstance.current);
-
-        // Add bus markers
-        addBusMarkers();
-
-        // Get user location if available
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              const { latitude, longitude } = position.coords;
-              setUserLocation({ lat: latitude, lng: longitude });
-              
-              // Add user location marker
-              const userMarker = window.L.marker([latitude, longitude], {
-                icon: window.L.divIcon({
-                  className: 'user-location-marker',
-                  html: '<div style="background: #3b82f6; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
-                  iconSize: [16, 16],
-                  iconAnchor: [8, 8]
-                })
-              }).addTo(mapInstance.current);
-              
-              userMarker.bindPopup('Your Location');
-            },
-            (error) => console.log('Geolocation error:', error)
-          );
-        }
-      }
-    };
-    document.head.appendChild(leafletJS);
+    // Load Leaflet JS
+    if (!document.querySelector('script[src*="leaflet"]')) {
+      const leafletJS = document.createElement('script');
+      leafletJS.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      leafletJS.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+      leafletJS.crossOrigin = '';
+      leafletJS.onload = () => {
+        initializeMap();
+      };
+      leafletJS.onerror = () => {
+        console.error('Failed to load Leaflet');
+      };
+      document.head.appendChild(leafletJS);
+    }
 
     return () => {
       if (mapInstance.current) {
@@ -141,15 +121,68 @@ const FleetMap = ({ fullSize = false }) => {
     };
   }, []);
 
+  const initializeMap = () => {
+    if (!window.L || !mapRef.current || mapInstance.current) return;
+
+    try {
+      // Initialize map centered on Vijayawada
+      mapInstance.current = window.L.map(mapRef.current, {
+        center: [16.5062, 80.6480],
+        zoom: 11,
+        zoomControl: true,
+        scrollWheelZoom: true
+      });
+
+      // Add OpenStreetMap tile layer
+      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19
+      }).addTo(mapInstance.current);
+
+      setMapLoaded(true);
+
+      // Add bus markers after map is ready
+      setTimeout(() => {
+        addBusMarkers();
+      }, 100);
+
+      // Get user location if available
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords;
+
+            // Add user location marker
+            const userMarker = window.L.marker([latitude, longitude], {
+              icon: window.L.divIcon({
+                className: 'user-location-marker',
+                html: '<div style="background: #3b82f6; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+              })
+            }).addTo(mapInstance.current);
+
+            userMarker.bindPopup('Your Location');
+          },
+          (error) => console.log('Geolocation error:', error)
+        );
+      }
+    } catch (error) {
+      console.error('Error initializing map:', error);
+    }
+  };
+
   const addBusMarkers = () => {
     if (!window.L || !mapInstance.current) return;
 
     // Clear existing markers
-    Object.values(realTimeMarkers).forEach(marker => {
-      mapInstance.current.removeLayer(marker);
+    Object.values(markersRef.current).forEach(marker => {
+      if (mapInstance.current) {
+        mapInstance.current.removeLayer(marker);
+      }
     });
+    markersRef.current = {};
 
-    const newMarkers = {};
     const filteredBuses = buses.filter(bus => {
       if (mapFilter === 'all') return true;
       return bus.status === mapFilter;
@@ -157,41 +190,45 @@ const FleetMap = ({ fullSize = false }) => {
 
     filteredBuses.forEach(bus => {
       const iconColor = getStatusColor(bus.status);
-      const marker = window.L.marker([bus.location.lat, bus.location.lng], {
-        icon: window.L.divIcon({
-          className: 'bus-marker',
-          html: `<div style="background: ${iconColor}; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3); position: relative;">
-                   <div style="position: absolute; top: -25px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; white-space: nowrap;">${bus.id}</div>
-                 </div>`,
-          iconSize: [22, 22],
-          iconAnchor: [11, 11]
-        })
-      }).addTo(mapInstance.current);
 
-      marker.bindPopup(`
-        <div style="min-width: 200px;">
-          <h4 style="margin: 0 0 8px 0; color: #1f2937;">${bus.id} - ${bus.route}</h4>
-          <p style="margin: 4px 0; color: #6b7280;"><strong>Driver:</strong> ${bus.driver}</p>
-          <p style="margin: 4px 0; color: #6b7280;"><strong>Location:</strong> ${bus.location.address}</p>
-          <p style="margin: 4px 0; color: #6b7280;"><strong>Occupancy:</strong> ${bus.occupancy}%</p>
-          <p style="margin: 4px 0; color: #6b7280;"><strong>Next Stop:</strong> ${bus.nextStop}</p>
-          <p style="margin: 4px 0; color: #6b7280;"><strong>Status:</strong> <span style="color: ${iconColor}; font-weight: bold;">${getStatusText(bus.status)}</span></p>
-        </div>
-      `);
+      try {
+        const marker = window.L.marker([bus.location.lat, bus.location.lng], {
+          icon: window.L.divIcon({
+            className: 'bus-marker',
+            html: `<div style="background: ${iconColor}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3); position: relative;">
+                     <div style="position: absolute; top: -28px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: white; padding: 3px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; font-weight: 600;">${bus.id}</div>
+                   </div>`,
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
+          })
+        }).addTo(mapInstance.current);
 
-      marker.on('click', () => setSelectedBus(bus));
-      newMarkers[bus.id] = marker;
+        marker.bindPopup(`
+          <div style="min-width: 220px; font-family: system-ui, -apple-system, sans-serif;">
+            <h4 style="margin: 0 0 10px 0; color: #1f2937; font-size: 16px; font-weight: 700;">${bus.id} - ${bus.route}</h4>
+            <div style="margin: 6px 0; color: #4b5563; font-size: 13px;"><strong>Driver:</strong> ${bus.driver}</div>
+            <div style="margin: 6px 0; color: #4b5563; font-size: 13px;"><strong>Location:</strong> ${bus.location.address}</div>
+            <div style="margin: 6px 0; color: #4b5563; font-size: 13px;"><strong>Occupancy:</strong> ${bus.occupancy}%</div>
+            <div style="margin: 6px 0; color: #4b5563; font-size: 13px;"><strong>Next Stop:</strong> ${bus.nextStop}</div>
+            <div style="margin: 6px 0; color: #4b5563; font-size: 13px;"><strong>Status:</strong> <span style="color: ${iconColor}; font-weight: bold;">${getStatusText(bus.status)}</span></div>
+            ${bus.delay > 0 ? `<div style="margin: 6px 0; color: #ef4444; font-size: 13px;"><strong>Delay:</strong> ${bus.delay} min</div>` : ''}
+          </div>
+        `);
+
+        marker.on('click', () => setSelectedBus(bus));
+        markersRef.current[bus.id] = marker;
+      } catch (error) {
+        console.error('Error adding marker for bus:', bus.id, error);
+      }
     });
-
-    setRealTimeMarkers(newMarkers);
   };
 
   // Update markers when buses or filter changes
   useEffect(() => {
-    if (mapInstance.current && window.L) {
+    if (mapLoaded && mapInstance.current && window.L) {
       addBusMarkers();
     }
-  }, [buses, mapFilter]);
+  }, [buses, mapFilter, mapLoaded]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -273,12 +310,21 @@ const FleetMap = ({ fullSize = false }) => {
       <CardContent className="p-0 h-[calc(100%-4rem)]">
         <div className="relative overflow-hidden rounded-b-lg h-full">
           {/* Leaflet Map Container */}
-          <div 
-            ref={mapRef} 
-            className="w-full h-full bg-gray-100"
-            style={fullSize ? {} : { minHeight: '300px' }}
-          />
-          
+          <div
+            ref={mapRef}
+            className="w-full h-full bg-gray-100 rounded-b-lg"
+            style={{ minHeight: fullSize ? '600px' : '400px', height: '100%' }}
+          >
+            {!mapLoaded && (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <RefreshCw className="w-8 h-8 text-muted-foreground mx-auto mb-2 animate-spin" />
+                  <p className="text-sm text-muted-foreground">Loading map...</p>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Map Legend */}
           <div className="absolute bottom-4 left-4 bg-white dark:bg-slate-800 rounded-lg p-3 shadow-lg border z-[1000]">
             <h4 className="text-sm font-semibold mb-2">Status Legend</h4>
@@ -315,12 +361,12 @@ const FleetMap = ({ fullSize = false }) => {
                 <h4 className="font-semibold text-lg">{selectedBus.id}</h4>
                 <p className="text-sm text-muted-foreground">{selectedBus.route}</p>
               </div>
-              <Badge variant={selectedBus.status === 'active' ? 'default' : 
-                             selectedBus.status === 'delayed' ? 'secondary' : 'destructive'}>
+              <Badge variant={selectedBus.status === 'active' ? 'default' :
+                selectedBus.status === 'delayed' ? 'secondary' : 'destructive'}>
                 {getStatusText(selectedBus.status)}
               </Badge>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
@@ -345,7 +391,7 @@ const FleetMap = ({ fullSize = false }) => {
                 </div>
               </div>
             </div>
-            
+
             <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center justify-between text-xs text-muted-foreground gap-2">
               <span>Driver: {selectedBus.driver}</span>
               <span>Updated: {selectedBus.lastUpdate}</span>

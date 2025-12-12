@@ -73,39 +73,85 @@ const DemandForecast = () => {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
-      {/* Time Series Chart - Reduced height */}
-      <Card className="h-80">
-        <CardHeader className="pb-2 pt-3">
+      {/* Time Series Chart */}
+      <Card>
+        <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="flex flex-wrap items-center gap-2">
-              <TrendingUp className="w-4 h-4" />
-              <span className="text-sm">Demand Forecast</span>
-              <Badge variant="outline" className="text-xs">
+              <TrendingUp className="w-5 h-5" />
+              <span>Demand Forecast</span>
+              <Badge variant="outline">
                 {getTimeWindowLabel(timeWindow)}
               </Badge>
             </CardTitle>
-            <div className="flex flex-wrap items-center gap-1">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={timeWindow}
                 onChange={(e) => setTimeWindow(e.target.value)}
-                className="text-xs border border-border rounded px-1.5 py-1 bg-background"
+                className="text-sm border border-border rounded px-2 py-1 bg-background"
               >
-                <option value="1h">Last Hour</option>
-                <option value="6h">Last 6 Hours</option>
-                <option value="12h">Last 12 Hours</option>
-                <option value="24h">Last 24 Hours</option>
-                <option value="7d">Last Week</option>
+                <option value="next_6_hours">Next 6 Hours</option>
+                <option value="next_12_hours">Next 12 Hours</option>
+                <option value="next_24_hours">Next 24 Hours</option>
               </select>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-0 h-[calc(100%-3.5rem)]">
-          <div className="p-4 h-full">
-            <div className="h-full bg-muted/20 rounded-lg flex items-center justify-center">
+        <CardContent>
+          <div className="space-y-3">
+            {/* Simple Bar Chart */}
+            <div className="h-48 flex items-end justify-between gap-1">
+              {forecastData.slice(0, 8).map((item, index) => {
+                const height = (item.demand / 250) * 100;
+                const isOverCapacity = item.demand > item.capacity;
+                return (
+                  <div key={index} className="flex-1 flex flex-col items-center gap-1">
+                    <div className="w-full flex flex-col items-center justify-end h-full">
+                      <div 
+                        className={`w-full rounded-t transition-all ${
+                          isOverCapacity ? 'bg-red-500' : 
+                          item.load > 80 ? 'bg-orange-500' : 
+                          'bg-blue-500'
+                        }`}
+                        style={{ height: `${height}%` }}
+                        title={`${item.time}: ${item.demand} passengers`}
+                      />
+                    </div>
+                    <span className="text-xs text-muted-foreground">{item.time}</span>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Legend */}
+            <div className="flex flex-wrap items-center justify-center gap-4 text-xs">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-blue-500 rounded"></div>
+                <span>Normal</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-orange-500 rounded"></div>
+                <span>High Load</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-red-500 rounded"></div>
+                <span>Over Capacity</span>
+              </div>
+            </div>
+            
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t">
               <div className="text-center">
-                <TrendingUp className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Interactive demand forecast chart</p>
-                <p className="text-xs text-muted-foreground mt-1">Showing predictions for next 2 hours</p>
+                <p className="text-xs text-muted-foreground">Peak Demand</p>
+                <p className="text-lg font-bold">240</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Avg Demand</p>
+                <p className="text-lg font-bold">165</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Capacity</p>
+                <p className="text-lg font-bold">150</p>
               </div>
             </div>
           </div>
@@ -113,21 +159,21 @@ const DemandForecast = () => {
       </Card>
 
       {/* Heatmap Visualization */}
-      <Card className="h-80">
-        <CardHeader className="pb-2 pt-3">
+      <Card>
+        <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="flex flex-wrap items-center gap-2">
-              <MapPin className="w-4 h-4" />
-              <span className="text-sm">Crowd Density Heatmap</span>
-              <Badge variant="outline" className="text-xs bg-orange-50 text-orange-800 border-orange-200">
+              <MapPin className="w-5 h-5" />
+              <span>Crowd Density Heatmap</span>
+              <Badge variant="outline" className="bg-orange-50 text-orange-800 border-orange-200">
                 Live
               </Badge>
             </CardTitle>
-            <div className="flex flex-wrap items-center gap-1">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={heatmapFilter}
                 onChange={(e) => setHeatmapFilter(e.target.value)}
-                className="text-xs border border-border rounded px-1.5 py-1 bg-background"
+                className="text-sm border border-border rounded px-2 py-1 bg-background"
               >
                 <option value="all">All Routes</option>
                 <option value="peak">Peak Hours</option>
@@ -136,13 +182,55 @@ const DemandForecast = () => {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-0 h-[calc(100%-3.5rem)]">
-          <div className="p-4 h-full">
-            <div className="h-full bg-muted/20 rounded-lg flex items-center justify-center">
-              <div className="text-center">
-                <MapPin className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Interactive heatmap visualization</p>
-                <p className="text-xs text-muted-foreground mt-1">Showing real-time crowd density</p>
+        <CardContent>
+          <div className="space-y-2">
+            {heatmapData.map((segment, index) => {
+              const loadPercentage = (segment.load / segment.capacity) * 100;
+              const getColor = () => {
+                if (loadPercentage > 100) return 'bg-red-500';
+                if (loadPercentage > 80) return 'bg-orange-500';
+                if (loadPercentage > 60) return 'bg-yellow-500';
+                return 'bg-green-500';
+              };
+              
+              return (
+                <div key={index} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium truncate flex-1">{segment.segment}</span>
+                    <span className="text-muted-foreground ml-2">{segment.demand}/{segment.capacity}</span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full transition-all ${getColor()}`}
+                      style={{ width: `${Math.min(loadPercentage, 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{segment.stops} stops</span>
+                    <span className="font-medium">{Math.round(loadPercentage)}% load</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* Summary */}
+          <div className="mt-4 pt-4 border-t">
+            <div className="grid grid-cols-2 gap-4 text-center">
+              <div>
+                <p className="text-xs text-muted-foreground">Critical Segments</p>
+                <p className="text-2xl font-bold text-red-600">
+                  {heatmapData.filter(s => (s.load / s.capacity) > 1).length}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">High Load Segments</p>
+                <p className="text-2xl font-bold text-orange-600">
+                  {heatmapData.filter(s => {
+                    const load = s.load / s.capacity;
+                    return load > 0.8 && load <= 1;
+                  }).length}
+                </p>
               </div>
             </div>
           </div>
