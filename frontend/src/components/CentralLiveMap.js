@@ -16,6 +16,8 @@ import {
   Pause,
   Square
 } from 'lucide-react';
+import { db } from '../lib/firebase';
+import { ref, onValue } from 'firebase/database';
 
 const CentralLiveMap = ({ fullSize = false }) => {
   const mapRef = useRef(null);
@@ -29,74 +31,8 @@ const CentralLiveMap = ({ fullSize = false }) => {
   const [realTimeMarkers, setRealTimeMarkers] = useState({});
   const playbackIntervalRef = useRef(null);
 
-  // Mock bus data with real coordinates for Vijayawada and Visakhapatnam
-  const [buses, setBuses] = useState([
-    {
-      id: 'APSRTC001',
-      route: 'Route 12',
-      location: { lat: 16.5062, lng: 80.6480, address: 'Vijayawada Railway Station' },
-      status: 'active',
-      occupancy: 67,
-      driver: 'Rajesh Kumar',
-      nextStop: 'Benz Circle',
-      delay: 0,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 25,
-      direction: 45
-    },
-    {
-      id: 'APSRTC002',
-      route: 'Route 15',
-      location: { lat: 16.5119, lng: 80.6332, address: 'MG Road, Vijayawada' },
-      status: 'delayed',
-      occupancy: 85,
-      driver: 'Suresh Singh',
-      nextStop: 'Governorpet',
-      delay: 8,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 15,
-      direction: 120
-    },
-    {
-      id: 'APSRTC003',
-      route: 'Route 28',
-      location: { lat: 17.6868, lng: 83.2185, address: 'Visakhapatnam Port' },
-      status: 'emergency',
-      occupancy: 34,
-      driver: 'Amit Sharma',
-      nextStop: 'Railway New Colony',
-      delay: 15,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 0,
-      direction: 0
-    },
-    {
-      id: 'APSRTC004',
-      route: 'Route 7',
-      location: { lat: 17.7132, lng: 83.2969, address: 'Visakhapatnam Airport' },
-      status: 'active',
-      occupancy: 45,
-      driver: 'Vinod Yadav',
-      nextStop: 'Gajuwaka',
-      delay: 2,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 30,
-      direction: 270
-    },
-    {
-      id: 'APSRTC005',
-      route: 'Route 33',
-      location: { lat: 16.4975, lng: 80.6559, address: 'Vijayawada Bus Stand' },
-      status: 'inactive',
-      occupancy: 0,
-      driver: 'Ravi Gupta',
-      nextStop: 'Depot',
-      delay: 0,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 0,
-      direction: 0
-    }
-  ]);
+  // REAL vehicles from Firebase - NO DEMO DATA
+  const [buses, setBuses] = useState([]); // START EMPTY - only Firebase data
 
   // Mock stops data
   const [stops, setStops] = useState([
@@ -137,8 +73,7 @@ const CentralLiveMap = ({ fullSize = false }) => {
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(mapInstance.current);
 
-        // Add map elements
-        addBusMarkers();
+        // Add map elements - ONLY static stops, NO DEMO BUSES
         addStopMarkers();
         addRoutePolylines();
 
@@ -176,8 +111,64 @@ const CentralLiveMap = ({ fullSize = false }) => {
     };
   }, []);
 
+  // Subscribe to Firebase for REAL vehicles only
+  useEffect(() => {
+    console.log('🔥 CentralLiveMap connecting to Firebase for REAL vehicles only');
+    
+    try {
+      const telemetryRef = ref(db, 'live-telemetry');
+      
+      const unsubscribe = onValue(telemetryRef, (snapshot) => {
+        try {
+          const raw = snapshot.val() || {};
+          const vehicleList = Object.values(raw).filter(v => 
+            v && typeof v.lat === 'number' && typeof v.lon === 'number' && v.vehicle_id
+          );
+          
+          console.log('📍 Real vehicles from Firebase:', vehicleList.length);
+          
+          // Convert Firebase format to component format
+          const formattedBuses = vehicleList.map(v => ({
+            id: v.vehicle_id,
+            route: v.route_id || 'Unknown',
+            location: { 
+              lat: v.lat, 
+              lng: v.lon, 
+              address: `${v.lat.toFixed(4)}, ${v.lon.toFixed(4)}` 
+            },
+            status: v.status === 'in_transit' ? 'active' : 'inactive',
+            occupancy: Math.round((v.passengers || 0) * 100 / 50), // Assume 50 seat capacity
+            driver: v.driver || 'Unknown Driver',
+            nextStop: 'Next Stop',
+            delay: Math.round((v.predicted_delay_seconds || 0) / 60),
+            lastUpdate: new Date().toLocaleTimeString(),
+            speed: v.speed_kmph || 0,
+            direction: v.heading || 0
+          }));
+          
+          setBuses(formattedBuses);
+          
+        } catch (error) {
+          console.warn('Firebase snapshot error:', error);
+          setBuses([]); // Clear on error - NO DEMO FALLBACK
+        }
+      }, (error) => {
+        console.error('Firebase connection error:', error);
+        setBuses([]); // Clear on error - NO DEMO FALLBACK
+      });
+
+      return () => unsubscribe();
+      
+    } catch (error) {
+      console.error('Error setting up Firebase:', error);
+      return () => {};
+    }
+  }, []);
+
   const addBusMarkers = () => {
     if (!window.L || !mapInstance.current) return;
+
+    console.log(`🗺️ CentralLiveMap updating markers - ${buses.length} real vehicles`);
 
     // Clear existing markers
     Object.values(realTimeMarkers).forEach(marker => {
@@ -190,6 +181,9 @@ const CentralLiveMap = ({ fullSize = false }) => {
       return bus.status === mapFilter;
     });
 
+    console.log(`🔍 After filtering: ${filteredBuses.length} vehicles to display`);
+
+    // Only add markers if there are real buses from Firebase
     filteredBuses.forEach(bus => {
       const iconColor = getStatusColor(bus.status);
       
@@ -338,31 +332,21 @@ const CentralLiveMap = ({ fullSize = false }) => {
     });
   };
 
-  // Update markers when buses or filter changes
+  // Update markers when buses or filter changes - ONLY for real Firebase vehicles
   useEffect(() => {
     if (mapInstance.current && window.L) {
-      addBusMarkers();
+      addBusMarkers(); // Only adds markers for real vehicles from Firebase
       addRoutePolylines();
     }
   }, [buses, mapFilter, selectedBus]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    // Simulate API call to update bus positions
+    console.log('🔄 Refresh clicked - Firebase data updates automatically');
+    // Firebase automatically updates, this is just for user feedback
     setTimeout(() => {
-      setBuses(prev => prev.map(bus => ({
-        ...bus,
-        occupancy: Math.max(0, Math.min(100, bus.occupancy + Math.random() * 10 - 5)),
-        speed: bus.status === 'inactive' ? 0 : Math.max(0, bus.speed + Math.random() * 5 - 2.5),
-        location: {
-          ...bus.location,
-          lat: bus.location.lat + (Math.random() - 0.5) * 0.001,
-          lng: bus.location.lng + (Math.random() - 0.5) * 0.001
-        },
-        lastUpdate: new Date().toLocaleTimeString()
-      })));
       setIsRefreshing(false);
-    }, 1000);
+    }, 500);
   };
 
   const togglePlayback = () => {

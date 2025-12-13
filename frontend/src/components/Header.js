@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { 
@@ -29,13 +30,48 @@ import {
   Sun,
   RefreshCw,
   Play,
-  Pause
+  Pause,
+  Maximize,
+  Minimize
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
 const Header = ({ currentTime, activeRegion, setActiveRegion, userRole, setUserRole, isLive, setIsLive }) => {
   const { theme, toggleTheme } = useTheme();
   const [timeWindow, setTimeWindow] = useState('1h');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const navigate = useNavigate();
+
+  // Handle fullscreen toggle
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+      }).catch(err => {
+        console.error('Error enabling fullscreen:', err);
+      });
+    } else {
+      document.exitFullscreen().then(() => {
+        setIsFullscreen(false);
+      }).catch(err => {
+        console.error('Error exiting fullscreen:', err);
+      });
+    }
+  }, []);
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // Navigate to live map page
+  const openLiveMap = () => {
+    navigate('/live-map');
+  };
 
   const regions = ['Vijayawada', 'Visakhapatnam'];
   const roles = ['Planner', 'Control Room', 'Depot View'];
@@ -159,6 +195,17 @@ const Header = ({ currentTime, activeRegion, setActiveRegion, userRole, setUserR
           </div>
           
           <div className="flex flex-wrap items-center gap-2">
+            {/* Live Map Button */}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={openLiveMap}
+              className="flex items-center space-x-1 bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+            >
+              <Map className="w-4 h-4" />
+              <span className="hidden sm:inline">Live Map</span>
+            </Button>
+
             {/* Refresh Button */}
             <Button variant="ghost" size="sm">
               <RefreshCw className="w-4 h-4" />
@@ -171,6 +218,16 @@ const Header = ({ currentTime, activeRegion, setActiveRegion, userRole, setUserR
               onClick={toggleTheme}
             >
               {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            </Button>
+
+            {/* Fullscreen Toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+            >
+              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
             </Button>
             
             {/* System Status */}
