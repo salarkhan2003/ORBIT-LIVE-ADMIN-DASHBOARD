@@ -257,9 +257,14 @@ const LiveMapPage = () => {
       const unsubscribe = onValue(telemetryRef, (snapshot) => {
         try {
           const raw = snapshot.val() || {};
-          const allVehicles = Object.values(raw).filter(v => 
-            v && typeof v.lat === 'number' && typeof v.lon === 'number'
-          );
+          const allVehicles = Object.values(raw).filter(v => {
+            try {
+              return v && typeof v.lat === 'number' && typeof v.lon === 'number';
+            } catch (error) {
+              console.warn('Invalid vehicle data:', v, error);
+              return false;
+            }
+          });
           
           // Remove duplicates by vehicle_id, keeping the most recent entry
           const vehicleMap = new Map();
@@ -276,20 +281,32 @@ const LiveMapPage = () => {
           const STALE_THRESHOLD = 30 * 1000; // 30 seconds in milliseconds
           
           const vehicles = Array.from(vehicleMap.values()).filter(vehicle => {
-            if (!vehicle.timestamp) {
-              // If no timestamp, assume it's stale
-              console.log(`⚠️ Vehicle ${vehicle.vehicle_id} has no timestamp, filtering out`);
-              return false;
+            try {
+              if (!vehicle.timestamp || typeof vehicle.timestamp !== 'number') {
+                // If no timestamp, allow it for now (might be test data)
+                console.log(`⚠️ Vehicle ${vehicle.vehicle_id || 'unknown'} has no valid timestamp, allowing for now`);
+                return true; // Allow vehicles without timestamps for testing
+              }
+              
+              const age = now - vehicle.timestamp;
+              
+              // Sanity check: if age is negative or too large, something is wrong
+              if (age < 0 || age > 24 * 60 * 60 * 1000) { // More than 24 hours
+                console.log(`⚠️ Vehicle ${vehicle.vehicle_id || 'unknown'} has invalid timestamp, filtering out`);
+                return false;
+              }
+              
+              const isRecent = age <= STALE_THRESHOLD;
+              
+              if (!isRecent) {
+                console.log(`⏰ Vehicle ${vehicle.vehicle_id || 'unknown'} is stale (${Math.round(age/1000)}s old), filtering out`);
+              }
+              
+              return isRecent;
+            } catch (error) {
+              console.error('Error filtering vehicle:', vehicle, error);
+              return false; // Filter out problematic vehicles
             }
-            
-            const age = now - vehicle.timestamp;
-            const isRecent = age <= STALE_THRESHOLD;
-            
-            if (!isRecent) {
-              console.log(`⏰ Vehicle ${vehicle.vehicle_id} is stale (${Math.round(age/1000)}s old), filtering out`);
-            }
-            
-            return isRecent;
           });
           
           const uniqueCount = Array.from(vehicleMap.values()).length;
