@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { 
-  MapPin, 
-  Bus, 
-  Users, 
-  Clock, 
+import {
+  MapPin,
+  Bus,
+  Users,
+  Clock,
   AlertTriangle,
   Navigation,
   Maximize2,
@@ -34,22 +34,7 @@ const CentralLiveMap = ({ fullSize = false }) => {
   // REAL vehicles from Firebase - NO DEMO DATA
   const [buses, setBuses] = useState([]); // START EMPTY - only Firebase data
 
-  // Mock stops data
-  const [stops, setStops] = useState([
-    { id: 'STOP001', name: 'Benz Circle', location: { lat: 16.5062, lng: 80.6480 }, crowdLevel: 85 },
-    { id: 'STOP002', name: 'Governorpet', location: { lat: 16.5119, lng: 80.6332 }, crowdLevel: 65 },
-    { id: 'STOP003', name: 'MG Road', location: { lat: 16.5089, lng: 80.6256 }, crowdLevel: 45 },
-    { id: 'STOP004', name: 'Railway Station', location: { lat: 16.5002, lng: 80.6400 }, crowdLevel: 95 },
-    { id: 'STOP005', name: 'Gajuwaka', location: { lat: 17.7132, lng: 83.2969 }, crowdLevel: 75 },
-    { id: 'STOP006', name: 'Port', location: { lat: 17.6868, lng: 83.2185 }, crowdLevel: 30 }
-  ]);
-
-  // Mock route polylines
-  const [routes, setRoutes] = useState([
-    { id: 'ROUTE12', name: 'Route 12', points: [[16.5062, 80.6480], [16.5089, 80.6256], [16.5119, 80.6332]] },
-    { id: 'ROUTE15', name: 'Route 15', points: [[16.5002, 80.6400], [16.5062, 80.6480], [16.5119, 80.6332]] },
-    { id: 'ROUTE28', name: 'Route 28', points: [[17.6868, 83.2185], [17.7000, 83.2500], [17.7132, 83.2969]] }
-  ]);
+  // NO MOCK DATA - Only real Firebase data will be shown
 
   // Initialize Leaflet map
   useEffect(() => {
@@ -65,39 +50,103 @@ const CentralLiveMap = ({ fullSize = false }) => {
     leafletJS.src = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js';
     leafletJS.onload = () => {
       if (window.L && mapRef.current) {
-        // Initialize map centered on Vijayawada
-        mapInstance.current = window.L.map(mapRef.current).setView([16.5062, 80.6480], 13);
+        // Initialize map centered on Guntur (your actual location)
+        mapInstance.current = window.L.map(mapRef.current).setView([16.2989, 80.4414], 13);
 
         // Add OpenStreetMap tile layer
         window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(mapInstance.current);
 
-        // Add map elements - ONLY static stops, NO DEMO BUSES
-        addStopMarkers();
-        addRoutePolylines();
-
-        // Get user location if available
+        // Get HIGH ACCURACY GPS location
         if (navigator.geolocation) {
+          console.log('🛰️ Requesting HIGH ACCURACY GPS location...');
+
           navigator.geolocation.getCurrentPosition(
             (position) => {
-              const { latitude, longitude } = position.coords;
+              const { latitude, longitude, accuracy } = position.coords;
+              console.log(`📍 GPS Location: ${latitude}, ${longitude} (accuracy: ${accuracy}m)`);
+
+              // Check if this looks like Guntur area (16.2-16.4 lat, 80.3-80.5 lon)
+              const isGunturArea = (latitude >= 16.2 && latitude <= 16.4 && longitude >= 80.3 && longitude <= 80.5);
+
+              if (isGunturArea) {
+                console.log('✅ Location confirmed as Guntur area');
+              } else {
+                console.warn(`⚠️ Location seems wrong - showing ${latitude}, ${longitude} but you said you're in Guntur`);
+                console.warn('This might be cached/network location. Try refreshing or clearing browser location data.');
+              }
+
               setUserLocation({ lat: latitude, lng: longitude });
-              
-              // Add user location marker
+
+              // Center map on your GPS location (with null check)
+              if (mapInstance.current) {
+                mapInstance.current.setView([latitude, longitude], 15);
+              }
+
+              // Add user location marker with accuracy circle
               const userMarker = window.L.marker([latitude, longitude], {
                 icon: window.L.divIcon({
                   className: 'user-location-marker',
-                  html: '<div style="background: #3b82f6; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
-                  iconSize: [16, 16],
-                  iconAnchor: [8, 8]
+                  html: '<div style="background: #3b82f6; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4);"></div>',
+                  iconSize: [24, 24],
+                  iconAnchor: [12, 12]
                 })
               }).addTo(mapInstance.current);
-              
-              userMarker.bindPopup('Your Location');
+
+              // Add accuracy circle
+              const accuracyCircle = window.L.circle([latitude, longitude], {
+                radius: accuracy,
+                color: '#3b82f6',
+                fillColor: '#3b82f6',
+                fillOpacity: 0.1,
+                weight: 1
+              }).addTo(mapInstance.current);
+
+              userMarker.bindPopup(`
+                <strong>Your GPS Location</strong><br>
+                Lat: ${latitude.toFixed(6)}<br>
+                Lon: ${longitude.toFixed(6)}<br>
+                Accuracy: ${accuracy.toFixed(0)}m<br>
+                <small>${isGunturArea ? '✅ Guntur area' : '⚠️ Check if correct'}</small>
+              `);
             },
-            (error) => console.log('Geolocation error:', error)
+            (error) => {
+              console.error('🚨 Geolocation error:', error);
+              console.log('📍 Using Guntur coordinates as fallback');
+
+              // Fallback to Guntur center
+              const gunturLat = 16.2989;
+              const gunturLon = 80.4414;
+
+              if (mapInstance.current) {
+                mapInstance.current.setView([gunturLat, gunturLon], 13);
+              }
+              setUserLocation({ lat: gunturLat, lng: gunturLon });
+
+              const fallbackMarker = window.L.marker([gunturLat, gunturLon], {
+                icon: window.L.divIcon({
+                  className: 'user-location-marker',
+                  html: '<div style="background: #f59e0b; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4);"></div>',
+                  iconSize: [24, 24],
+                  iconAnchor: [12, 12]
+                })
+              }).addTo(mapInstance.current);
+
+              fallbackMarker.bindPopup(`
+                <strong>Fallback Location</strong><br>
+                Guntur Center<br>
+                <small>GPS failed - using city center</small>
+              `);
+            },
+            {
+              enableHighAccuracy: true,    // Force GPS instead of network
+              timeout: 10000,              // 10 second timeout
+              maximumAge: 0                // Don't use cached location
+            }
           );
+        } else {
+          console.error('❌ Geolocation not supported by browser');
         }
       }
     };
@@ -114,27 +163,27 @@ const CentralLiveMap = ({ fullSize = false }) => {
   // Subscribe to Firebase for REAL vehicles only
   useEffect(() => {
     console.log('🔥 CentralLiveMap connecting to Firebase for REAL vehicles only');
-    
+
     try {
       const telemetryRef = ref(db, 'live-telemetry');
-      
+
       const unsubscribe = onValue(telemetryRef, (snapshot) => {
         try {
           const raw = snapshot.val() || {};
-          const vehicleList = Object.values(raw).filter(v => 
+          const vehicleList = Object.values(raw).filter(v =>
             v && typeof v.lat === 'number' && typeof v.lon === 'number' && v.vehicle_id
           );
-          
+
           console.log('📍 Real vehicles from Firebase:', vehicleList.length);
-          
+
           // Convert Firebase format to component format
           const formattedBuses = vehicleList.map(v => ({
             id: v.vehicle_id,
             route: v.route_id || 'Unknown',
-            location: { 
-              lat: v.lat, 
-              lng: v.lon, 
-              address: `${v.lat.toFixed(4)}, ${v.lon.toFixed(4)}` 
+            location: {
+              lat: v.lat,
+              lng: v.lon,
+              address: `${v.lat.toFixed(4)}, ${v.lon.toFixed(4)}`
             },
             status: v.status === 'in_transit' ? 'active' : 'inactive',
             occupancy: Math.round((v.passengers || 0) * 100 / 50), // Assume 50 seat capacity
@@ -145,9 +194,16 @@ const CentralLiveMap = ({ fullSize = false }) => {
             speed: v.speed_kmph || 0,
             direction: v.heading || 0
           }));
-          
+
+          // If this is the first real vehicle, center map on it
+          if (formattedBuses.length > 0 && buses.length === 0 && mapInstance.current) {
+            const firstVehicle = formattedBuses[0];
+            console.log(`📍 Centering map on first real vehicle at [${firstVehicle.location.lat}, ${firstVehicle.location.lng}]`);
+            mapInstance.current.setView([firstVehicle.location.lat, firstVehicle.location.lng], 15);
+          }
+
           setBuses(formattedBuses);
-          
+
         } catch (error) {
           console.warn('Firebase snapshot error:', error);
           setBuses([]); // Clear on error - NO DEMO FALLBACK
@@ -158,10 +214,10 @@ const CentralLiveMap = ({ fullSize = false }) => {
       });
 
       return () => unsubscribe();
-      
+
     } catch (error) {
       console.error('Error setting up Firebase:', error);
-      return () => {};
+      return () => { };
     }
   }, []);
 
@@ -186,7 +242,7 @@ const CentralLiveMap = ({ fullSize = false }) => {
     // Only add markers if there are real buses from Firebase
     filteredBuses.forEach(bus => {
       const iconColor = getStatusColor(bus.status);
-      
+
       // Create bus marker with direction arrow
       const marker = window.L.marker([bus.location.lat, bus.location.lng], {
         icon: window.L.divIcon({
@@ -262,81 +318,12 @@ const CentralLiveMap = ({ fullSize = false }) => {
     setRealTimeMarkers(newMarkers);
   };
 
-  const addStopMarkers = () => {
-    if (!window.L || !mapInstance.current) return;
-
-    stops.forEach(stop => {
-      const crowdColor = getCrowdColor(stop.crowdLevel);
-      
-      const marker = window.L.marker([stop.location.lat, stop.location.lng], {
-        icon: window.L.divIcon({
-          className: 'stop-marker',
-          html: `
-            <div style="
-              width: 16px;
-              height: 16px;
-              background: ${crowdColor};
-              border: 2px solid white;
-              border-radius: 50%;
-              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-              position: relative;
-            ">
-              <div style="
-                position: absolute;
-                top: -25px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: rgba(0,0,0,0.8);
-                color: white;
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-size: 9px;
-                white-space: nowrap;
-                pointer-events: none;
-              ">${stop.name}</div>
-            </div>
-          `,
-          iconSize: [16, 16],
-          iconAnchor: [8, 8]
-        })
-      }).addTo(mapInstance.current);
-
-      marker.bindPopup(`
-        <div style="min-width: 180px;">
-          <h4 style="margin: 0 0 8px 0; color: #1f2937;">${stop.name}</h4>
-          <p style="margin: 4px 0; color: #6b7280;"><strong>Crowd Level:</strong> ${stop.crowdLevel}%</p>
-          <p style="margin: 4px 0; color: #6b7280;"><strong>Expected Wait:</strong> ${Math.round(stop.crowdLevel / 10)} min</p>
-        </div>
-      `);
-    });
-  };
-
-  const addRoutePolylines = () => {
-    if (!window.L || !mapInstance.current) return;
-
-    routes.forEach(route => {
-      const polyline = window.L.polyline(route.points, {
-        color: '#3b82f6',
-        weight: 4,
-        opacity: 0.7
-      }).addTo(mapInstance.current);
-
-      // Highlight selected route
-      if (selectedBus && selectedBus.route === route.name) {
-        polyline.setStyle({
-          color: '#ef4444',
-          weight: 6,
-          opacity: 1
-        });
-      }
-    });
-  };
+  // NO MOCK STOPS OR ROUTES - Only real Firebase vehicle data
 
   // Update markers when buses or filter changes - ONLY for real Firebase vehicles
   useEffect(() => {
     if (mapInstance.current && window.L) {
       addBusMarkers(); // Only adds markers for real vehicles from Firebase
-      addRoutePolylines();
     }
   }, [buses, mapFilter, selectedBus]);
 
@@ -368,11 +355,7 @@ const CentralLiveMap = ({ fullSize = false }) => {
     }
   };
 
-  const getCrowdColor = (level) => {
-    if (level >= 80) return '#ef4444'; // red
-    if (level >= 50) return '#f59e0b'; // amber
-    return '#10b981'; // green
-  };
+  // Removed getCrowdColor - no mock stops
 
   const getStatusText = (status) => {
     switch (status) {
@@ -421,6 +404,41 @@ const CentralLiveMap = ({ fullSize = false }) => {
               {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2"
+              onClick={() => {
+                // Force Guntur location since GPS is showing wrong coordinates
+                const gunturLat = 16.2989;
+                const gunturLon = 80.4414;
+                console.log('🎯 Manually setting location to Guntur');
+
+                if (mapInstance.current) {
+                  mapInstance.current.setView([gunturLat, gunturLon], 14);
+
+                  // Add manual location marker
+                  const manualMarker = window.L.marker([gunturLat, gunturLon], {
+                    icon: window.L.divIcon({
+                      className: 'user-location-marker',
+                      html: '<div style="background: #10b981; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4);"></div>',
+                      iconSize: [24, 24],
+                      iconAnchor: [12, 12]
+                    })
+                  }).addTo(mapInstance.current);
+
+                  manualMarker.bindPopup(`
+                    <strong>Manual Location</strong><br>
+                    Guntur, Andhra Pradesh<br>
+                    <small>✅ Manually set to correct location</small>
+                  `);
+                }
+                setUserLocation({ lat: gunturLat, lng: gunturLon });
+              }}
+              title="Set Location to Guntur (GPS Override)"
+            >
+              🎯 Guntur
+            </Button>
+            <Button
               variant="ghost"
               size="sm"
               className="h-8 w-8 p-0"
@@ -435,12 +453,12 @@ const CentralLiveMap = ({ fullSize = false }) => {
       <CardContent className="p-0 flex-1 min-h-0">
         <div className="relative overflow-hidden rounded-b-lg h-full">
           {/* Leaflet Map Container */}
-          <div 
-            ref={mapRef} 
+          <div
+            ref={mapRef}
             className="w-full h-full min-h-[400px] bg-gray-100"
             style={{ minHeight: '400px' }}
           />
-          
+
           {/* Map Legend */}
           <div className="absolute bottom-3 left-3 bg-white dark:bg-slate-800 rounded-lg p-2 shadow-lg border z-[1000]">
             <h4 className="text-xs font-semibold mb-1">Legend</h4>
@@ -467,7 +485,7 @@ const CentralLiveMap = ({ fullSize = false }) => {
               </div>
             </div>
           </div>
-          
+
           {/* Playback Slider */}
           <div className="absolute bottom-3 right-3 bg-white dark:bg-slate-800 rounded-lg p-2 shadow-lg border z-[1000] w-48">
             <div className="flex items-center justify-between mb-1">
@@ -498,12 +516,12 @@ const CentralLiveMap = ({ fullSize = false }) => {
                 <h4 className="font-semibold text-sm">{selectedBus.id}</h4>
                 <p className="text-xs text-muted-foreground">{selectedBus.route}</p>
               </div>
-              <Badge variant={selectedBus.status === 'active' ? 'default' : 
-                             selectedBus.status === 'delayed' ? 'secondary' : 'destructive'} className="text-xs">
+              <Badge variant={selectedBus.status === 'active' ? 'default' :
+                selectedBus.status === 'delayed' ? 'secondary' : 'destructive'} className="text-xs">
                 {getStatusText(selectedBus.status)}
               </Badge>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
               <div className="space-y-1">
                 <div className="flex items-center space-x-1">
@@ -536,7 +554,7 @@ const CentralLiveMap = ({ fullSize = false }) => {
                 </div>
               </div>
             </div>
-            
+
             <div className="mt-2 pt-2 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div className="text-xs text-muted-foreground">
                 <span>Driver: {selectedBus.driver}</span>

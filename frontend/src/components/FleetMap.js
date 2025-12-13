@@ -9,6 +9,8 @@ import {
   Navigation,
   RefreshCw
 } from 'lucide-react';
+import { db } from '../lib/firebase';
+import { ref, onValue } from 'firebase/database';
 
 const FleetMap = ({ fullSize = false }) => {
   const mapRef = useRef(null);
@@ -24,193 +26,8 @@ const FleetMap = ({ fullSize = false }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
 
-  // Mock bus data with real coordinates - Vijayawada to Visakhapatnam route
-  const [buses, setBuses] = useState([
-    // Vijayawada area buses
-    {
-      id: 'APSRTC001',
-      route: 'Route 12 (VJA-VSP)',
-      location: { lat: 16.5062, lng: 80.6480, address: 'Vijayawada Railway Station' },
-      status: 'active',
-      occupancy: 67,
-      driver: 'Rajesh Kumar',
-      nextStop: 'Benz Circle',
-      delay: 0,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 45
-    },
-    {
-      id: 'APSRTC002',
-      route: 'Route 15 (VJA-VSP)',
-      location: { lat: 16.5119, lng: 80.6332, address: 'MG Road, Vijayawada' },
-      status: 'delayed',
-      occupancy: 85,
-      driver: 'Suresh Singh',
-      nextStop: 'Governorpet',
-      delay: 8,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 35
-    },
-    {
-      id: 'APSRTC003',
-      route: 'Route 12 (VJA-VSP)',
-      location: { lat: 16.4975, lng: 80.6559, address: 'Vijayawada Bus Stand' },
-      status: 'active',
-      occupancy: 52,
-      driver: 'Ravi Gupta',
-      nextStop: 'Eluru',
-      delay: 0,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 50
-    },
-    // Mid-route buses (between Vijayawada and Visakhapatnam)
-    {
-      id: 'APSRTC004',
-      route: 'Route 12 (VJA-VSP)',
-      location: { lat: 16.7107, lng: 81.1048, address: 'Eluru Junction' },
-      status: 'active',
-      occupancy: 73,
-      driver: 'Prakash Reddy',
-      nextStop: 'Rajahmundry',
-      delay: 3,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 55
-    },
-    {
-      id: 'APSRTC005',
-      route: 'Route 15 (VJA-VSP)',
-      location: { lat: 17.0005, lng: 81.8040, address: 'Rajahmundry' },
-      status: 'active',
-      occupancy: 68,
-      driver: 'Venkat Rao',
-      nextStop: 'Tuni',
-      delay: 0,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 60
-    },
-    {
-      id: 'APSRTC006',
-      route: 'Route 12 (VJA-VSP)',
-      location: { lat: 17.3505, lng: 82.4520, address: 'Tuni' },
-      status: 'active',
-      occupancy: 55,
-      driver: 'Krishna Murthy',
-      nextStop: 'Anakapalle',
-      delay: 2,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 58
-    },
-    {
-      id: 'APSRTC007',
-      route: 'Route 15 (VJA-VSP)',
-      location: { lat: 17.5449, lng: 82.9388, address: 'Anakapalle' },
-      status: 'active',
-      occupancy: 62,
-      driver: 'Srinivas Reddy',
-      nextStop: 'Visakhapatnam',
-      delay: 0,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 52
-    },
-    // Visakhapatnam area buses
-    {
-      id: 'APSRTC008',
-      route: 'Route 28 (Local)',
-      location: { lat: 17.6868, lng: 83.2185, address: 'Visakhapatnam Port' },
-      status: 'emergency',
-      occupancy: 34,
-      driver: 'Amit Sharma',
-      nextStop: 'Railway New Colony',
-      delay: 15,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 0
-    },
-    {
-      id: 'APSRTC009',
-      route: 'Route 7 (Local)',
-      location: { lat: 17.7132, lng: 83.2969, address: 'Visakhapatnam Airport' },
-      status: 'active',
-      occupancy: 45,
-      driver: 'Vinod Yadav',
-      nextStop: 'Gajuwaka',
-      delay: 2,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 40
-    },
-    {
-      id: 'APSRTC010',
-      route: 'Route 28 (Local)',
-      location: { lat: 17.7231, lng: 83.3012, address: 'Gajuwaka' },
-      status: 'active',
-      occupancy: 78,
-      driver: 'Ramesh Babu',
-      nextStop: 'Madhurawada',
-      delay: 0,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 35
-    },
-    {
-      id: 'APSRTC011',
-      route: 'Route 7 (Local)',
-      location: { lat: 17.7306, lng: 83.3250, address: 'MVP Colony' },
-      status: 'active',
-      occupancy: 82,
-      driver: 'Naresh Kumar',
-      nextStop: 'Beach Road',
-      delay: 0,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 30
-    },
-    {
-      id: 'APSRTC012',
-      route: 'Route 12 (VJA-VSP)',
-      location: { lat: 17.6869, lng: 83.2185, address: 'Visakhapatnam RTC Complex' },
-      status: 'active',
-      occupancy: 48,
-      driver: 'Mohan Rao',
-      nextStop: 'Depot',
-      delay: 0,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 25
-    },
-    // Return journey buses
-    {
-      id: 'APSRTC013',
-      route: 'Route 15 (VSP-VJA)',
-      location: { lat: 17.2403, lng: 82.2397, address: 'Peddapuram' },
-      status: 'active',
-      occupancy: 71,
-      driver: 'Satish Reddy',
-      nextStop: 'Rajahmundry',
-      delay: 5,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 48
-    },
-    {
-      id: 'APSRTC014',
-      route: 'Route 12 (VSP-VJA)',
-      location: { lat: 16.9891, lng: 81.7780, address: 'Rajahmundry' },
-      status: 'active',
-      occupancy: 65,
-      driver: 'Balaji Rao',
-      nextStop: 'Eluru',
-      delay: 0,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 55
-    },
-    {
-      id: 'APSRTC015',
-      route: 'Route 15 (VSP-VJA)',
-      location: { lat: 16.7160, lng: 81.0969, address: 'Eluru' },
-      status: 'delayed',
-      occupancy: 88,
-      driver: 'Sudheer Kumar',
-      nextStop: 'Vijayawada',
-      delay: 12,
-      lastUpdate: new Date().toLocaleTimeString(),
-      speed: 42
-    }
-  ]);
+  // REAL vehicles from Firebase - NO DEMO DATA
+  const [buses, setBuses] = useState([]); // START EMPTY - only Firebase data
 
   // Initialize Leaflet map
   useEffect(() => {
@@ -255,13 +72,66 @@ const FleetMap = ({ fullSize = false }) => {
     };
   }, []);
 
+  // Subscribe to Firebase for REAL vehicles only
+  useEffect(() => {
+    console.log('🔥 FleetMap connecting to Firebase for REAL vehicles only');
+    
+    try {
+      const telemetryRef = ref(db, 'live-telemetry');
+      
+      const unsubscribe = onValue(telemetryRef, (snapshot) => {
+        try {
+          const raw = snapshot.val() || {};
+          const vehicleList = Object.values(raw).filter(v => 
+            v && typeof v.lat === 'number' && typeof v.lon === 'number' && v.vehicle_id
+          );
+          
+          console.log('📍 FleetMap - Real vehicles from Firebase:', vehicleList.length);
+          
+          // Convert Firebase format to FleetMap format
+          const formattedBuses = vehicleList.map(v => ({
+            id: v.vehicle_id,
+            route: v.route_id || 'Unknown',
+            location: { 
+              lat: v.lat, 
+              lng: v.lon, 
+              address: `${v.lat.toFixed(4)}, ${v.lon.toFixed(4)}` 
+            },
+            status: v.status === 'in_transit' ? 'active' : 'inactive',
+            occupancy: Math.round((v.passengers || 0) * 100 / 50), // Assume 50 seat capacity
+            driver: v.driver || 'Unknown Driver',
+            nextStop: 'Next Stop',
+            delay: Math.round((v.predicted_delay_seconds || 0) / 60),
+            lastUpdate: new Date().toLocaleTimeString(),
+            speed: v.speed_kmph || 0
+          }));
+          
+          setBuses(formattedBuses);
+          
+        } catch (error) {
+          console.warn('Firebase snapshot error:', error);
+          setBuses([]); // Clear on error - NO DEMO FALLBACK
+        }
+      }, (error) => {
+        console.error('Firebase connection error:', error);
+        setBuses([]); // Clear on error - NO DEMO FALLBACK
+      });
+
+      return () => unsubscribe();
+      
+    } catch (error) {
+      console.error('Error setting up Firebase:', error);
+      return () => {};
+    }
+  }, []);
+
   const initializeMap = () => {
     if (!window.L || !mapRef.current || mapInstance.current) return;
 
     try {
-      // Initialize map centered on Vijayawada
+      // Initialize map centered on Guntur (your actual location)
       mapInstance.current = window.L.map(mapRef.current, {
-        center: [16.5062, 80.6480],
+        center: [16.2989, 80.4414],
         zoom: 11,
         zoomControl: true,
         scrollWheelZoom: true
@@ -275,30 +145,63 @@ const FleetMap = ({ fullSize = false }) => {
 
       setMapLoaded(true);
 
-      // Add bus markers after map is ready
-      setTimeout(() => {
-        addBusMarkers();
-      }, 100);
-
-      // Get user location if available
+      // Get HIGH ACCURACY GPS location
       if (navigator.geolocation) {
+        console.log('🛰️ FleetMap - Requesting HIGH ACCURACY GPS location...');
+        
         navigator.geolocation.getCurrentPosition(
           (position) => {
-            const { latitude, longitude } = position.coords;
+            const { latitude, longitude, accuracy } = position.coords;
+            console.log(`📍 FleetMap GPS: ${latitude}, ${longitude} (accuracy: ${accuracy}m)`);
+            
+            // Check if this looks like Guntur area
+            const isGunturArea = (latitude >= 16.2 && latitude <= 16.4 && longitude >= 80.3 && longitude <= 80.5);
+            
+            if (isGunturArea) {
+              console.log('✅ FleetMap - Location confirmed as Guntur area');
+            } else {
+              console.warn(`⚠️ FleetMap - Location seems wrong for Guntur: ${latitude}, ${longitude}`);
+            }
+
+            // Center map on your GPS location (with null check)
+            if (mapInstance.current) {
+              mapInstance.current.setView([latitude, longitude], 14);
+            }
 
             // Add user location marker
             const userMarker = window.L.marker([latitude, longitude], {
               icon: window.L.divIcon({
                 className: 'user-location-marker',
-                html: '<div style="background: #3b82f6; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
-                iconSize: [16, 16],
-                iconAnchor: [8, 8]
+                html: '<div style="background: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4);"></div>',
+                iconSize: [22, 22],
+                iconAnchor: [11, 11]
               })
             }).addTo(mapInstance.current);
 
-            userMarker.bindPopup('Your Location');
+            userMarker.bindPopup(`
+              <strong>Your GPS Location</strong><br>
+              Lat: ${latitude.toFixed(6)}<br>
+              Lon: ${longitude.toFixed(6)}<br>
+              Accuracy: ${accuracy.toFixed(0)}m<br>
+              <small>${isGunturArea ? '✅ Guntur area' : '⚠️ Check location'}</small>
+            `);
           },
-          (error) => console.log('Geolocation error:', error)
+          (error) => {
+            console.error('🚨 FleetMap geolocation error:', error);
+            console.log('📍 FleetMap - Using Guntur as fallback');
+            
+            // Fallback to Guntur center
+            const gunturLat = 16.2989;
+            const gunturLon = 80.4414;
+            if (mapInstance.current) {
+              mapInstance.current.setView([gunturLat, gunturLon], 13);
+            }
+          },
+          {
+            enableHighAccuracy: true,    // Force GPS instead of network
+            timeout: 10000,              // 10 second timeout  
+            maximumAge: 0                // Don't use cached location
+          }
         );
       }
     } catch (error) {
@@ -366,20 +269,11 @@ const FleetMap = ({ fullSize = false }) => {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    // Simulate API call to update bus positions
+    console.log('🔄 FleetMap refresh clicked - Firebase data updates automatically');
+    // Firebase automatically updates, this is just for user feedback
     setTimeout(() => {
-      setBuses(prev => prev.map(bus => ({
-        ...bus,
-        occupancy: Math.max(0, Math.min(100, bus.occupancy + Math.random() * 10 - 5)),
-        location: {
-          ...bus.location,
-          lat: bus.location.lat + (Math.random() - 0.5) * 0.001,
-          lng: bus.location.lng + (Math.random() - 0.5) * 0.001
-        },
-        lastUpdate: new Date().toLocaleTimeString()
-      })));
       setIsRefreshing(false);
-    }, 1000);
+    }, 500);
   };
 
   const getStatusColor = (status) => {
@@ -430,6 +324,39 @@ const FleetMap = ({ fullSize = false }) => {
               <option value="emergency">Emergency</option>
               <option value="inactive">Inactive</option>
             </select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                // Force Guntur location since GPS is showing wrong coordinates
+                const gunturLat = 16.2989;
+                const gunturLon = 80.4414;
+                console.log('🎯 FleetMap - Manually setting location to Guntur');
+                
+                if (mapInstance.current) {
+                  mapInstance.current.setView([gunturLat, gunturLon], 14);
+                  
+                  // Add manual location marker
+                  const manualMarker = window.L.marker([gunturLat, gunturLon], {
+                    icon: window.L.divIcon({
+                      className: 'user-location-marker',
+                      html: '<div style="background: #10b981; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4);"></div>',
+                      iconSize: [22, 22],
+                      iconAnchor: [11, 11]
+                    })
+                  }).addTo(mapInstance.current);
+                  
+                  manualMarker.bindPopup(`
+                    <strong>Manual Location</strong><br>
+                    Guntur, Andhra Pradesh<br>
+                    <small>✅ Manually set to correct location</small>
+                  `);
+                }
+              }}
+              title="Set Location to Guntur (GPS Override)"
+            >
+              🎯 Guntur
+            </Button>
             <Button
               variant="ghost"
               size="sm"

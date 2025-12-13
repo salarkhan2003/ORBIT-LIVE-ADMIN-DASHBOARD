@@ -257,11 +257,53 @@ const LiveMapPage = () => {
       const unsubscribe = onValue(telemetryRef, (snapshot) => {
         try {
           const raw = snapshot.val() || {};
-          const vehicles = Object.values(raw).filter(v => 
+          const allVehicles = Object.values(raw).filter(v => 
             v && typeof v.lat === 'number' && typeof v.lon === 'number'
           );
           
-          console.log('Vehicles from Firebase:', vehicles.length);
+          // Remove duplicates by vehicle_id, keeping the most recent entry
+          const vehicleMap = new Map();
+          allVehicles.forEach(vehicle => {
+            const id = vehicle.vehicle_id || 'unknown';
+            const existing = vehicleMap.get(id);
+            if (!existing || (vehicle.timestamp && vehicle.timestamp > existing.timestamp)) {
+              vehicleMap.set(id, vehicle);
+            }
+          });
+          
+          // Filter out vehicles that haven't updated in the last 30 seconds
+          const now = Date.now();
+          const STALE_THRESHOLD = 30 * 1000; // 30 seconds in milliseconds
+          
+          const vehicles = Array.from(vehicleMap.values()).filter(vehicle => {
+            if (!vehicle.timestamp) {
+              // If no timestamp, assume it's stale
+              console.log(`⚠️ Vehicle ${vehicle.vehicle_id} has no timestamp, filtering out`);
+              return false;
+            }
+            
+            const age = now - vehicle.timestamp;
+            const isRecent = age <= STALE_THRESHOLD;
+            
+            if (!isRecent) {
+              console.log(`⏰ Vehicle ${vehicle.vehicle_id} is stale (${Math.round(age/1000)}s old), filtering out`);
+            }
+            
+            return isRecent;
+          });
+          
+          const uniqueCount = Array.from(vehicleMap.values()).length;
+          
+          console.log('Raw vehicles from Firebase:', allVehicles.length);
+          console.log('Unique vehicles after deduplication:', uniqueCount);
+          console.log('Active vehicles (recent updates):', vehicles.length);
+          
+          if (allVehicles.length !== uniqueCount) {
+            console.log('🔍 Removed duplicates:', allVehicles.length - uniqueCount);
+          }
+          if (uniqueCount !== vehicles.length) {
+            console.log('⏰ Filtered stale vehicles:', uniqueCount - vehicles.length);
+          }
           setVehicles(vehicles);
           setIsConnected(true);
           
@@ -337,7 +379,7 @@ const LiveMapPage = () => {
 
     // Add or update markers for current vehicles
     filteredVehicles.forEach(vehicle => {
-      const vehicleId = vehicle.vehicle_id;
+      const vehicleId = vehicle.vehicle_id || `unknown-${Date.now()}-${Math.random()}`;
       const icon = createBusIcon(vehicle);
       const popupContent = createPopupContent(vehicle);
 
@@ -544,7 +586,7 @@ const LiveMapPage = () => {
         {selectedVehicle && (
           <div className="vehicle-panel">
             <div className="panel-header">
-              <h3>{selectedVehicle.vehicle_id}</h3>
+              <h3>{selectedVehicle.vehicle_id || 'Unknown Vehicle'}</h3>
               <Button variant="ghost" size="sm" onClick={() => setSelectedVehicle(null)}>
                 <X className="w-4 h-4" />
               </Button>
@@ -552,33 +594,33 @@ const LiveMapPage = () => {
             <div className="panel-body">
               <div className="detail-row">
                 <span>Route</span>
-                <Badge>{selectedVehicle.route_id}</Badge>
+                <Badge>{selectedVehicle.route_id || 'N/A'}</Badge>
               </div>
               <div className="detail-row">
                 <span>Trip ID</span>
-                <span>{selectedVehicle.trip_id}</span>
+                <span>{selectedVehicle.trip_id || 'N/A'}</span>
               </div>
               <div className="detail-row">
                 <span>Speed</span>
-                <span>{selectedVehicle.speed_kmph.toFixed(1)} km/h</span>
+                <span>{(selectedVehicle.speed_kmph || 0).toFixed(1)} km/h</span>
               </div>
               <div className="detail-row">
                 <span>Heading</span>
-                <span>{selectedVehicle.heading}°</span>
+                <span>{selectedVehicle.heading || 0}°</span>
               </div>
               <div className="detail-row">
                 <span>Status</span>
-                <span>{selectedVehicle.status}</span>
+                <span>{selectedVehicle.status || 'Unknown'}</span>
               </div>
               <div className="detail-row">
                 <span>Delay</span>
                 <span className={getDelayStatus(selectedVehicle.predicted_delay_seconds)}>
-                  {selectedVehicle.predicted_delay_seconds} sec
+                  {selectedVehicle.predicted_delay_seconds || 0} sec
                 </span>
               </div>
               <div className="detail-row">
                 <span>Location</span>
-                <span className="coords">{selectedVehicle.lat.toFixed(5)}, {selectedVehicle.lon.toFixed(5)}</span>
+                <span className="coords">{(selectedVehicle.lat || 0).toFixed(5)}, {(selectedVehicle.lon || 0).toFixed(5)}</span>
               </div>
             </div>
             <div className="panel-footer">
