@@ -69,7 +69,6 @@ import FleetDriverManagement from './FleetDriverManagement';
 import AIInsights from './AIInsights';
 import AlertsIncidentManager from './AlertsIncidentManager';
 import ReportingAnalytics from './ReportingAnalytics';
-import SimulationCenter from './SimulationCenter';
 
 const Dashboard = () => {
   const { theme, toggleTheme } = useTheme();
@@ -109,17 +108,16 @@ const Dashboard = () => {
     { id: 'driver', label: 'Driver KPI', icon: Award },
     // Other modules
     { id: 'overview', label: 'Fleet Overview', icon: Activity },
-    { id: 'crowd', label: 'Crowd Analytics', icon: Users }, { id: 'emergency', label: 'Emergency', icon: Bell },
+    { id: 'crowd', label: 'Crowd Analytics', icon: Users },
+    { id: 'emergency', label: 'Emergency', icon: Bell },
     { id: 'environment', label: 'Environment', icon: Globe },
     { id: 'feedback', label: 'Feedback', icon: MessageSquare },
     { id: 'reports', label: 'Reports Export', icon: FileText },
-    { id: 'simulator', label: 'What-If Simulator', icon: BarChart },
-    { id: 'ai', label: 'AI Feedback', icon: Zap },
+    { id: 'simulator', label: 'Fleet Simulator', icon: Zap },
+    { id: 'ai', label: 'AI Feedback', icon: BarChart },
     { id: 'access', label: 'Access Controls', icon: Shield },
     { id: 'accessibility', label: 'Accessibility', icon: Languages },
-    { id: 'support', label: 'Support', icon: Headphones },
-    // Simulation
-    { id: 'simulation', label: 'Simulation Center', icon: Server }
+    { id: 'support', label: 'Support', icon: Headphones }
   ];
 
   const renderContent = () => {
@@ -181,8 +179,6 @@ const Dashboard = () => {
         return <LanguageAccessibility />;
       case 'support':
         return <Support />;
-      case 'simulation':
-        return <SimulationCenter />;
       default:
         // Default to Operations Map
         return <OperationsMap />;

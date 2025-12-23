@@ -1,6 +1,7 @@
 /**
- * APSRTC Control Room - What-If Scenario Simulator
- * Full real-time simulation with 1-100+ buses and admin controls
+ * APSRTC Control Room - Advanced Fleet Simulator
+ * Complete real-time simulation with 1-200 buses, What-If analysis, and full admin controls
+ * Combined: What-If Simulator + Simulation Center
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -9,70 +10,73 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Label } from './ui/label';
 import { Slider } from './ui/slider';
-import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import {
   Play,
   Pause,
-  BarChart3,
-  TrendingUp,
-  TrendingDown,
   Clock,
   Users,
   Zap,
-  Settings,
   Plus,
   Minus,
   DollarSign,
   Bus,
-  Fuel,
-  Timer,
-  ArrowRight,
-  RefreshCw,
   CheckCircle2,
   AlertTriangle,
   Save,
   RotateCcw,
-  MapPin,
   Activity,
   Gauge,
   Route,
   Shield,
   Eye,
-  Trash2,
-  Edit,
-  Download,
-  Upload
+  EyeOff,
+  TrendingUp,
+  TrendingDown,
+  MapPin,
+  Thermometer,
+  Brain,
+  Target,
+  Settings,
+  BarChart3,
+  PieChart as PieChartIcon,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { ref, onValue, set, update } from 'firebase/database';
+import { ref, set } from 'firebase/database';
 import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
-  AreaChart,
-  Area,
   PieChart,
   Pie,
-  Cell
+  Cell,
+  BarChart,
+  Bar
 } from 'recharts';
 
-// Routes definition
+// Routes with realistic Vijayawada data
 const ROUTES = {
-  'RJ-12': { name: 'Vijayawada - Benz Circle', color: '#ef4444', capacity: 52 },
-  'RJ-10': { name: 'Guntur - Vijayawada', color: '#3b82f6', capacity: 52 },
-  'RJ-15': { name: 'Tenali - Vijayawada', color: '#10b981', capacity: 48 },
-  'RJ-08': { name: 'Amaravati Express', color: '#8b5cf6', capacity: 52 },
-  'RJ-22': { name: 'Eluru Road Circular', color: '#f59e0b', capacity: 45 },
-  'RJ-05': { name: 'Railway Station Express', color: '#06b6d4', capacity: 52 }
+  'RJ-12': { name: 'Vijayawada City - Benz Circle', color: '#ef4444', capacity: 52, stops: 12 },
+  'RJ-10': { name: 'Guntur - Vijayawada Rapid', color: '#3b82f6', capacity: 52, stops: 8 },
+  'RJ-15': { name: 'Tenali - Vijayawada', color: '#10b981', capacity: 48, stops: 10 },
+  'RJ-08': { name: 'Amaravati Express', color: '#8b5cf6', capacity: 52, stops: 6 },
+  'RJ-22': { name: 'Eluru Road Circular', color: '#f59e0b', capacity: 45, stops: 15 },
+  'RJ-05': { name: 'Railway Station Express', color: '#06b6d4', capacity: 52, stops: 5 }
 };
+
+// Delay hotspots
+const DELAY_HOTSPOTS = [
+  { name: 'Benz Circle', lat: 16.5060, lng: 80.6480, delay: 12, severity: 'high' },
+  { name: 'One Town', lat: 16.5119, lng: 80.6332, delay: 6, severity: 'medium' },
+  { name: 'Railway Station', lat: 16.5188, lng: 80.6198, delay: 4, severity: 'low' }
+];
 
 const VIJAYAWADA_CENTER = { lat: 16.5062, lng: 80.6480 };
 
@@ -80,23 +84,34 @@ const WhatIfSimulator = () => {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const markersRef = useRef({});
+  const hotspotsRef = useRef([]);
+  const routeLinesRef = useRef([]);
   const animationRef = useRef(null);
 
-  // Simulation state
+  // Core state
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationSpeed, setSimulationSpeed] = useState(1);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [activeTab, setActiveTab] = useState('simulation');
 
-  // Bus configuration (1-200)
+  // Bus configuration
   const [busCount, setBusCount] = useState(50);
   const [buses, setBuses] = useState([]);
 
-  // Admin controls
-  const [selectedRoute, setSelectedRoute] = useState('all');
-  const [showEmergencyOnly, setShowEmergencyOnly] = useState(false);
-  const [occupancyThreshold, setOccupancyThreshold] = useState(0);
+  // Display toggles
+  const [showHeatmap, setShowHeatmap] = useState(true);
+  const [showRoutes, setShowRoutes] = useState(true);
 
-  // Real-time stats
+  // Filters
+  const [selectedRoute, setSelectedRoute] = useState('all');
+  const [occupancyFilter, setOccupancyFilter] = useState(0);
+  const [showEmergencyOnly, setShowEmergencyOnly] = useState(false);
+
+  // Scenario
+  const [scenario, setScenario] = useState('normal');
+
+  // Stats
   const [stats, setStats] = useState({
     totalBuses: 0,
     activeBuses: 0,
@@ -105,52 +120,83 @@ const WhatIfSimulator = () => {
     totalPassengers: 0,
     emergencies: 0,
     onTimePercent: 0,
-    revenue: 0
+    revenue: 0,
+    peakRoute: 'RJ-12',
+    peakOccupancy: 0
   });
 
-  // What-if parameters
+  // What-If
   const [whatIfBuses, setWhatIfBuses] = useState(0);
   const [whatIfResults, setWhatIfResults] = useState(null);
+
+  // Demand forecast
+  const [demandForecast, setDemandForecast] = useState([]);
 
   // Activity log
   const [activityLog, setActivityLog] = useState([]);
 
   // Generate buses
-  const generateBuses = useCallback((count) => {
+  const generateBuses = useCallback((count, scenarioType = 'normal') => {
     const routeKeys = Object.keys(ROUTES);
     const newBuses = [];
+
+    const scenarioMultiplier = {
+      normal: 1,
+      peak: 1.3,
+      emergency: 0.8,
+      festival: 1.5
+    }[scenarioType] || 1;
 
     for (let i = 0; i < count; i++) {
       const routeId = routeKeys[i % routeKeys.length];
       const route = ROUTES[routeId];
-      
-      // Random position around Vijayawada
+
       const lat = VIJAYAWADA_CENTER.lat + (Math.random() - 0.5) * 0.08;
       const lng = VIJAYAWADA_CENTER.lng + (Math.random() - 0.5) * 0.08;
-      
-      const occupancy = Math.floor(20 + Math.random() * 80);
-      const delay = Math.floor(Math.random() * 15);
-      const isEmergency = Math.random() < 0.02;
+
+      const baseOccupancy = 30 + Math.random() * 50;
+      const occupancy = Math.min(100, Math.floor(baseOccupancy * scenarioMultiplier));
+      const delay = Math.floor(Math.random() * (scenarioType === 'peak' ? 20 : 12));
+      const isEmergency = scenarioType === 'emergency' ? Math.random() < 0.1 : Math.random() < 0.02;
 
       newBuses.push({
         id: `AP39TB${String(100 + i).padStart(3, '0')}`,
+        vehicle_id: `AP39TB${String(100 + i).padStart(3, '0')}`,
         route_id: routeId,
         lat,
+        lon: lng,
         lng,
         heading: Math.floor(Math.random() * 360),
-        speed: 15 + Math.random() * 35,
+        speed: 10 + Math.random() * 40,
         occupancy_percent: occupancy,
         passengers: Math.floor((occupancy / 100) * route.capacity),
         capacity: route.capacity,
+        seats_available: route.capacity - Math.floor((occupancy / 100) * route.capacity),
         delay_minutes: delay,
+        predicted_delay_seconds: delay * 60,
         status: isEmergency ? 'emergency' : delay > 10 ? 'delayed' : 'active',
-        driver: `Driver ${i + 1}`,
+        driver_name: ['Ramesh', 'Suresh', 'Mahesh', 'Kumar', 'Raju', 'Venkat', 'Srinivas', 'Naidu'][i % 8],
         is_active: true,
         timestamp: Date.now()
       });
     }
-
     return newBuses;
+  }, []);
+
+  // Generate demand forecast
+  const generateDemandForecast = useCallback(() => {
+    const forecast = [];
+    const now = new Date();
+    for (let h = 0; h < 24; h++) {
+      const hour = (now.getHours() + h) % 24;
+      const isPeak = (hour >= 7 && hour <= 10) || (hour >= 17 && hour <= 20);
+      forecast.push({
+        hour: `${String(hour).padStart(2, '0')}:00`,
+        passengers: Math.floor(80 + (isPeak ? 120 : 40) + Math.random() * 40),
+        capacity: 160
+      });
+    }
+    return forecast;
   }, []);
 
   // Initialize map
@@ -183,24 +229,26 @@ const WhatIfSimulator = () => {
       });
 
       window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
-        attribution: '© Ola Maps',
+        attribution: '© Ola Maps | APSRTC',
         maxZoom: 19
       }).addTo(map);
 
       window.L.control.zoom({ position: 'topright' }).addTo(map);
+      map.attributionControl.setPrefix('');
 
       mapInstance.current = map;
       setMapLoaded(true);
-
       setTimeout(() => map.invalidateSize(), 100);
 
-      // Initialize buses
-      const initialBuses = generateBuses(busCount);
+      // Initialize
+      const initialBuses = generateBuses(busCount, scenario);
       setBuses(initialBuses);
+      setDemandForecast(generateDemandForecast());
       updateStats(initialBuses);
       drawMarkers(initialBuses, map);
+      drawHotspots(map);
 
-      addLog('System initialized with ' + busCount + ' buses');
+      addLog('🚀 Simulator initialized with ' + busCount + ' buses');
     };
 
     initMap();
@@ -215,13 +263,29 @@ const WhatIfSimulator = () => {
   }, []);
 
   // Update stats
-  const updateStats = (busData) => {
+  const updateStats = useCallback((busData) => {
+    if (!busData.length) return;
+
     const active = busData.filter(b => b.status !== 'inactive').length;
     const emergencies = busData.filter(b => b.status === 'emergency').length;
-    const totalDelay = busData.reduce((sum, b) => sum + b.delay_minutes, 0);
+    const totalDelay = busData.reduce((sum, b) => sum + (b.delay_minutes || 0), 0);
     const totalOccupancy = busData.reduce((sum, b) => sum + b.occupancy_percent, 0);
     const totalPax = busData.reduce((sum, b) => sum + b.passengers, 0);
-    const onTime = busData.filter(b => b.delay_minutes < 5).length;
+    const onTime = busData.filter(b => (b.delay_minutes || 0) < 5).length;
+
+    // Find peak route
+    const routeOccupancy = {};
+    busData.forEach(b => {
+      if (!routeOccupancy[b.route_id]) routeOccupancy[b.route_id] = { total: 0, count: 0 };
+      routeOccupancy[b.route_id].total += b.occupancy_percent;
+      routeOccupancy[b.route_id].count++;
+    });
+
+    let peakRoute = 'RJ-12', peakOcc = 0;
+    Object.entries(routeOccupancy).forEach(([route, data]) => {
+      const avg = data.total / data.count;
+      if (avg > peakOcc) { peakOcc = avg; peakRoute = route; }
+    });
 
     setStats({
       totalBuses: busData.length,
@@ -231,75 +295,99 @@ const WhatIfSimulator = () => {
       totalPassengers: totalPax,
       emergencies,
       onTimePercent: Math.round((onTime / busData.length) * 100),
-      revenue: totalPax * 25
+      revenue: totalPax * 25,
+      peakRoute,
+      peakOccupancy: Math.round(peakOcc)
     });
-  };
+  }, []);
 
-  // Draw markers on map
+  // Draw markers
   const drawMarkers = useCallback((busData, map) => {
     if (!map || !window.L) return;
 
-    // Clear existing
     Object.values(markersRef.current).forEach(m => map.removeLayer(m));
     markersRef.current = {};
 
-    // Filter buses
     let filtered = busData;
-    if (selectedRoute !== 'all') {
-      filtered = filtered.filter(b => b.route_id === selectedRoute);
-    }
-    if (showEmergencyOnly) {
-      filtered = filtered.filter(b => b.status === 'emergency');
-    }
-    if (occupancyThreshold > 0) {
-      filtered = filtered.filter(b => b.occupancy_percent >= occupancyThreshold);
-    }
+    if (selectedRoute !== 'all') filtered = filtered.filter(b => b.route_id === selectedRoute);
+    if (showEmergencyOnly) filtered = filtered.filter(b => b.status === 'emergency');
+    if (occupancyFilter > 0) filtered = filtered.filter(b => b.occupancy_percent >= occupancyFilter);
 
     filtered.forEach(bus => {
       const color = bus.status === 'emergency' ? '#ef4444' :
-                    bus.status === 'delayed' ? '#f59e0b' : '#10b981';
+                    bus.status === 'delayed' ? '#f59e0b' :
+                    bus.occupancy_percent > 85 ? '#ef4444' :
+                    bus.occupancy_percent > 60 ? '#f59e0b' : '#10b981';
 
       const icon = window.L.divIcon({
-        className: 'bus-marker',
+        className: 'sim-bus-marker',
         html: `
           <div style="position: relative;">
             <div style="
-              width: 28px; height: 28px;
+              width: 30px; height: 30px;
               background: ${color};
               border: 2px solid white;
               border-radius: 50%;
-              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
               display: flex; align-items: center; justify-content: center;
+              transform: rotate(${bus.heading}deg);
               ${bus.status === 'emergency' ? 'animation: pulse 1s infinite;' : ''}
             ">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
                 <path d="M4 16V6a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z"/>
               </svg>
             </div>
-            <div style="position: absolute; top: -8px; right: -8px; background: #1e40af; color: white; font-size: 7px; padding: 1px 3px; border-radius: 2px;">${bus.route_id}</div>
+            <div style="position: absolute; top: -8px; right: -10px; background: ${ROUTES[bus.route_id]?.color || '#1e40af'}; color: white; font-size: 7px; font-weight: bold; padding: 1px 3px; border-radius: 2px;">${bus.route_id}</div>
+            ${bus.occupancy_percent > 90 ? '<div style="position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%); font-size: 8px;">🔥</div>' : ''}
           </div>
         `,
-        iconSize: [28, 36],
-        iconAnchor: [14, 18]
+        iconSize: [30, 38],
+        iconAnchor: [15, 19]
       });
 
-      const marker = window.L.marker([bus.lat, bus.lng], { icon })
+      const marker = window.L.marker([bus.lat, bus.lng || bus.lon], { icon })
         .bindPopup(`
-          <div style="min-width: 160px; font-size: 12px;">
-            <div style="background: ${color}; color: white; padding: 6px; margin: -8px -20px 6px; font-weight: bold;">
-              ${bus.id} - ${bus.route_id}
+          <div style="min-width: 180px; font-family: system-ui; font-size: 12px;">
+            <div style="background: ${color}; color: white; padding: 8px; margin: -8px -20px 8px; font-weight: bold;">
+              ${bus.id} <span style="float: right;">${bus.route_id}</span>
             </div>
-            <p><b>Status:</b> ${bus.status.toUpperCase()}</p>
-            <p><b>Occupancy:</b> ${bus.occupancy_percent}%</p>
+            <p><b>Status:</b> <span style="color: ${color};">${bus.status.toUpperCase()}</span></p>
+            <p><b>Occupancy:</b> ${bus.passengers}/${bus.capacity} (${bus.occupancy_percent}%)</p>
             <p><b>Speed:</b> ${bus.speed.toFixed(1)} km/h</p>
             <p><b>Delay:</b> +${bus.delay_minutes} min</p>
+            <p><b>Driver:</b> ${bus.driver_name}</p>
           </div>
         `)
         .addTo(map);
 
       markersRef.current[bus.id] = marker;
     });
-  }, [selectedRoute, showEmergencyOnly, occupancyThreshold]);
+  }, [selectedRoute, showEmergencyOnly, occupancyFilter]);
+
+  // Draw hotspots
+  const drawHotspots = useCallback((map) => {
+    if (!map || !window.L) return;
+
+    hotspotsRef.current.forEach(h => map.removeLayer(h));
+    hotspotsRef.current = [];
+
+    if (!showHeatmap) return;
+
+    DELAY_HOTSPOTS.forEach(hotspot => {
+      const color = hotspot.severity === 'high' ? '#ef4444' :
+                    hotspot.severity === 'medium' ? '#f59e0b' : '#10b981';
+
+      const circle = window.L.circle([hotspot.lat, hotspot.lng], {
+        radius: 150 + hotspot.delay * 20,
+        color,
+        fillColor: color,
+        fillOpacity: 0.25,
+        weight: 2
+      }).bindPopup(`<b>${hotspot.name}</b><br>Avg Delay: +${hotspot.delay} min`).addTo(map);
+
+      hotspotsRef.current.push(circle);
+    });
+  }, [showHeatmap]);
 
   // Animation loop
   useEffect(() => {
@@ -308,36 +396,29 @@ const WhatIfSimulator = () => {
     const animate = () => {
       setBuses(prev => {
         const updated = prev.map(bus => {
-          // Move bus
-          const moveAmt = 0.0002 * simulationSpeed;
+          const moveAmt = 0.00015 * simulationSpeed;
           const angle = bus.heading * (Math.PI / 180);
           let newLat = bus.lat + Math.cos(angle) * moveAmt;
-          let newLng = bus.lng + Math.sin(angle) * moveAmt;
+          let newLng = (bus.lng || bus.lon) + Math.sin(angle) * moveAmt;
 
-          // Bounce at bounds
-          if (newLat > 16.6 || newLat < 16.4) {
-            newLat = bus.lat;
-            bus.heading = (bus.heading + 180) % 360;
-          }
-          if (newLng > 80.75 || newLng < 80.55) {
-            newLng = bus.lng;
-            bus.heading = (bus.heading + 180) % 360;
-          }
+          if (newLat > 16.58 || newLat < 16.43) { newLat = bus.lat; bus.heading = (bus.heading + 180) % 360; }
+          if (newLng > 80.72 || newLng < 80.58) { newLng = bus.lng || bus.lon; bus.heading = (bus.heading + 180) % 360; }
 
-          // Random changes
-          if (Math.random() < 0.1) bus.heading = (bus.heading + (Math.random() - 0.5) * 40 + 360) % 360;
-          
-          const occChange = (Math.random() - 0.5) * 4;
+          if (Math.random() < 0.08) bus.heading = (bus.heading + (Math.random() - 0.5) * 45 + 360) % 360;
+
+          const occChange = (Math.random() - 0.5) * 3;
           const newOcc = Math.max(10, Math.min(100, bus.occupancy_percent + occChange));
 
           return {
             ...bus,
             lat: newLat,
             lng: newLng,
+            lon: newLng,
             occupancy_percent: Math.floor(newOcc),
             passengers: Math.floor((newOcc / 100) * bus.capacity),
-            delay_minutes: Math.max(0, bus.delay_minutes + (Math.random() - 0.5) * 0.5),
-            speed: Math.max(5, Math.min(55, bus.speed + (Math.random() - 0.5) * 3)),
+            seats_available: bus.capacity - Math.floor((newOcc / 100) * bus.capacity),
+            delay_minutes: Math.max(0, bus.delay_minutes + (Math.random() - 0.5) * 0.3),
+            speed: Math.max(5, Math.min(55, bus.speed + (Math.random() - 0.5) * 2)),
             timestamp: Date.now()
           };
         });
@@ -347,33 +428,48 @@ const WhatIfSimulator = () => {
         return updated;
       });
 
-      animationRef.current = setTimeout(animate, 500 / simulationSpeed);
+      animationRef.current = setTimeout(animate, 600 / simulationSpeed);
     };
 
     animate();
     return () => { if (animationRef.current) clearTimeout(animationRef.current); };
-  }, [isSimulating, simulationSpeed, drawMarkers]);
+  }, [isSimulating, simulationSpeed, drawMarkers, updateStats]);
+
+  // Update hotspots when toggle changes
+  useEffect(() => {
+    if (mapInstance.current) drawHotspots(mapInstance.current);
+  }, [showHeatmap, drawHotspots]);
 
   // Update bus count
   const updateBusCount = (count) => {
     const newCount = Math.max(1, Math.min(200, count));
     setBusCount(newCount);
-    const newBuses = generateBuses(newCount);
+    const newBuses = generateBuses(newCount, scenario);
     setBuses(newBuses);
     updateStats(newBuses);
     if (mapInstance.current) drawMarkers(newBuses, mapInstance.current);
-    addLog(`Bus count updated to ${newCount}`);
+    addLog(`📊 Fleet size: ${newCount} buses`);
+  };
+
+  // Change scenario
+  const changeScenario = (newScenario) => {
+    setScenario(newScenario);
+    const newBuses = generateBuses(busCount, newScenario);
+    setBuses(newBuses);
+    updateStats(newBuses);
+    if (mapInstance.current) drawMarkers(newBuses, mapInstance.current);
+    addLog(`🎭 Scenario: ${newScenario.toUpperCase()}`);
   };
 
   // What-if calculation
   useEffect(() => {
     if (whatIfBuses > 0) {
       const currentDelay = parseFloat(stats.avgDelay) || 5;
-      const delayReduction = Math.min(0.95, Math.log10(whatIfBuses + 1) * 0.35);
+      const delayReduction = Math.min(0.92, Math.log10(whatIfBuses + 1) * 0.38);
       const newDelay = Math.max(0.3, currentDelay * (1 - delayReduction));
-      const revenuePerBus = 6000 - (whatIfBuses * 20);
-      const revenueIncrease = whatIfBuses * Math.max(2500, revenuePerBus);
-      const costPerBus = 3500;
+      const revenuePerBus = 7000 - (whatIfBuses * 25);
+      const revenueIncrease = whatIfBuses * Math.max(3000, revenuePerBus);
+      const costPerBus = 3800;
       const totalCost = whatIfBuses * costPerBus;
 
       setWhatIfResults({
@@ -381,22 +477,20 @@ const WhatIfSimulator = () => {
         currentDelay: currentDelay.toFixed(1),
         newDelay: newDelay.toFixed(1),
         delayReduction: Math.round((1 - newDelay / currentDelay) * 100),
-        revenueIncrease: revenueIncrease,
+        revenueIncrease,
         operatingCost: totalCost,
         netProfit: revenueIncrease - totalCost,
-        roi: Math.round(((revenueIncrease - totalCost) / totalCost) * 100)
+        roi: Math.round(((revenueIncrease - totalCost) / totalCost) * 100),
+        satisfaction: Math.min(98, 75 + whatIfBuses * 0.5)
       });
     } else {
       setWhatIfResults(null);
     }
   }, [whatIfBuses, stats.avgDelay]);
 
-  // Add to log
+  // Activity log
   const addLog = (message) => {
-    setActivityLog(prev => [{
-      time: new Date().toLocaleTimeString(),
-      message
-    }, ...prev.slice(0, 19)]);
+    setActivityLog(prev => [{ time: new Date().toLocaleTimeString(), message }, ...prev.slice(0, 29)]);
   };
 
   // Admin actions
@@ -405,82 +499,98 @@ const WhatIfSimulator = () => {
       const idx = Math.floor(Math.random() * prev.length);
       const updated = [...prev];
       updated[idx] = { ...updated[idx], status: 'emergency' };
-      addLog(`Emergency triggered on ${updated[idx].id}`);
+      addLog(`🚨 Emergency: ${updated[idx].id}`);
       return updated;
     });
   };
 
-  const clearAllEmergencies = () => {
+  const clearEmergencies = () => {
     setBuses(prev => prev.map(b => ({ ...b, status: b.delay_minutes > 10 ? 'delayed' : 'active' })));
-    addLog('All emergencies cleared');
+    addLog('✅ Emergencies cleared');
   };
 
   const resetSimulation = () => {
     setIsSimulating(false);
-    const newBuses = generateBuses(busCount);
+    const newBuses = generateBuses(busCount, scenario);
     setBuses(newBuses);
     updateStats(newBuses);
     if (mapInstance.current) drawMarkers(newBuses, mapInstance.current);
-    addLog('Simulation reset');
+    addLog('🔄 Simulation reset');
   };
 
   const saveToFirebase = async () => {
     try {
       const data = {};
-      buses.forEach(b => { data[b.id] = b; });
+      buses.forEach(b => { data[b.id] = { ...b, lon: b.lng }; });
       await set(ref(db, 'live-telemetry'), data);
-      addLog('Data saved to Firebase');
-      alert('✅ Saved to Firebase!');
+      
+      const today = new Date().toISOString().split('T')[0];
+      await set(ref(db, `simulation_data/${today}`), { buses: data, stats, timestamp: Date.now() });
+      
+      addLog('💾 Saved to Firebase');
+      alert('✅ Data saved to Firebase!');
     } catch (e) {
-      addLog('Error saving: ' + e.message);
+      addLog('❌ Error: ' + e.message);
     }
   };
 
-  // Pie chart data
+  // Chart data
   const statusData = [
     { name: 'Active', value: buses.filter(b => b.status === 'active').length, color: '#10b981' },
     { name: 'Delayed', value: buses.filter(b => b.status === 'delayed').length, color: '#f59e0b' },
     { name: 'Emergency', value: buses.filter(b => b.status === 'emergency').length, color: '#ef4444' }
   ];
 
+  const routeData = Object.entries(ROUTES).map(([id, route]) => ({
+    route: id,
+    buses: buses.filter(b => b.route_id === id).length,
+    color: route.color
+  }));
+
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className={`h-full flex flex-col overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 bg-white' : ''}`}>
       {/* Header */}
-      <div className="bg-gradient-to-r from-purple-900 to-indigo-900 text-white p-3">
+      <div className="bg-gradient-to-r from-indigo-900 via-purple-900 to-indigo-900 text-white px-4 py-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Zap className="w-6 h-6 text-yellow-400" />
+            <div className="p-2 bg-yellow-500/20 rounded-lg">
+              <Zap className="w-6 h-6 text-yellow-400" />
+            </div>
             <div>
-              <h1 className="text-lg font-bold">What-If Simulator</h1>
-              <p className="text-xs opacity-80">Real-time fleet simulation with 1-200 buses</p>
+              <h1 className="text-xl font-bold">APSRTC Fleet Simulator</h1>
+              <p className="text-xs opacity-75">Real-time simulation • What-If Analysis • Admin Controls</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge className={isSimulating ? 'bg-green-500' : 'bg-gray-500'}>
-              {isSimulating ? 'LIVE' : 'PAUSED'}
+          <div className="flex items-center gap-3">
+            <Badge className={`${isSimulating ? 'bg-green-500 animate-pulse' : 'bg-slate-600'} px-3`}>
+              {isSimulating ? '● LIVE' : '○ PAUSED'}
             </Badge>
-            <Badge className="bg-blue-500">{stats.totalBuses} Buses</Badge>
+            <Badge className="bg-blue-600 px-3">{stats.totalBuses} Buses</Badge>
+            <Badge className="bg-purple-600 px-3">{scenario.toUpperCase()}</Badge>
+            <Button size="sm" variant="ghost" className="text-white" onClick={() => setIsFullscreen(!isFullscreen)}>
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </Button>
           </div>
         </div>
       </div>
 
-      {/* KPI Row */}
-      <div className="grid grid-cols-8 gap-2 p-2 bg-slate-100">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-8 gap-2 p-2 bg-gradient-to-r from-slate-100 to-slate-200 flex-shrink-0">
         {[
-          { icon: Bus, label: 'Total', value: stats.totalBuses, color: 'blue' },
-          { icon: Activity, label: 'Active', value: stats.activeBuses, color: 'green' },
-          { icon: Clock, label: 'Avg Delay', value: `+${stats.avgDelay}m`, color: 'amber' },
-          { icon: Gauge, label: 'Occupancy', value: `${stats.avgOccupancy}%`, color: 'purple' },
-          { icon: Users, label: 'Passengers', value: stats.totalPassengers, color: 'cyan' },
-          { icon: CheckCircle2, label: 'On-Time', value: `${stats.onTimePercent}%`, color: 'emerald' },
-          { icon: AlertTriangle, label: 'Emergencies', value: stats.emergencies, color: 'red' },
-          { icon: DollarSign, label: 'Revenue', value: `₹${(stats.revenue/1000).toFixed(0)}k`, color: 'green' }
+          { icon: Bus, label: 'Fleet', value: stats.totalBuses, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { icon: Activity, label: 'Active', value: stats.activeBuses, color: 'text-green-600', bg: 'bg-green-50' },
+          { icon: Clock, label: 'Avg Delay', value: `+${stats.avgDelay}m`, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { icon: Gauge, label: 'Occupancy', value: `${stats.avgOccupancy}%`, color: 'text-purple-600', bg: 'bg-purple-50' },
+          { icon: Users, label: 'Passengers', value: stats.totalPassengers.toLocaleString(), color: 'text-cyan-600', bg: 'bg-cyan-50' },
+          { icon: CheckCircle2, label: 'On-Time', value: `${stats.onTimePercent}%`, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { icon: AlertTriangle, label: 'Alerts', value: stats.emergencies, color: 'text-red-600', bg: 'bg-red-50' },
+          { icon: DollarSign, label: 'Revenue', value: `₹${(stats.revenue/1000).toFixed(0)}k`, color: 'text-green-600', bg: 'bg-green-50' }
         ].map((item, i) => (
-          <Card key={i} className="border-0 shadow-sm">
+          <Card key={i} className={`border-0 shadow-sm ${item.bg}`}>
             <CardContent className="p-2 text-center">
-              <item.icon className={`w-4 h-4 mx-auto mb-1 text-${item.color}-500`} />
-              <p className="text-lg font-bold">{item.value}</p>
-              <p className="text-[9px] text-muted-foreground">{item.label}</p>
+              <item.icon className={`w-4 h-4 mx-auto mb-1 ${item.color}`} />
+              <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
+              <p className="text-[9px] text-slate-500 font-medium">{item.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -489,60 +599,77 @@ const WhatIfSimulator = () => {
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Map */}
-        <div className="w-[55%] relative" style={{ minHeight: '400px' }}>
+        <div className="w-[58%] relative" style={{ minHeight: '400px' }}>
           <div ref={mapRef} className="absolute inset-0" style={{ width: '100%', height: '100%' }} />
 
           {/* Map Controls */}
-          <div className="absolute top-2 left-2 z-[1000] space-y-2">
-            <Card className="shadow-lg">
-              <CardContent className="p-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <Button size="sm" className={isSimulating ? 'bg-red-500' : 'bg-green-500'} onClick={() => setIsSimulating(!isSimulating)}>
+          <div className="absolute top-3 left-3 z-[1000] space-y-2">
+            {/* Simulation Controls */}
+            <Card className="shadow-xl border-0">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-3">
+                  <Button size="sm" className={`${isSimulating ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} shadow`} onClick={() => setIsSimulating(!isSimulating)}>
                     {isSimulating ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                   </Button>
-                  {[1, 5, 10].map(s => (
-                    <Button key={s} size="sm" variant={simulationSpeed === s ? 'default' : 'outline'} className="h-7 w-7 p-0 text-xs" onClick={() => setSimulationSpeed(s)}>
-                      {s}x
-                    </Button>
-                  ))}
+                  <div className="flex border rounded overflow-hidden">
+                    {[1, 5, 10].map(s => (
+                      <button key={s} className={`px-2 py-1 text-xs font-medium ${simulationSpeed === s ? 'bg-indigo-600 text-white' : 'bg-white hover:bg-slate-100'}`} onClick={() => setSimulationSpeed(s)}>
+                        {s}x
+                      </button>
+                    ))}
+                  </div>
                   <Button size="sm" variant="outline" onClick={resetSimulation}><RotateCcw className="w-4 h-4" /></Button>
-                  <Button size="sm" variant="outline" className="bg-green-50" onClick={saveToFirebase}><Save className="w-4 h-4 text-green-600" /></Button>
+                  <Button size="sm" variant="outline" className="bg-green-50 border-green-300" onClick={saveToFirebase}><Save className="w-4 h-4 text-green-600" /></Button>
                 </div>
 
                 {/* Bus Count */}
-                <div className="border-t pt-2">
-                  <Label className="text-xs font-semibold flex justify-between">
-                    <span>Buses: {busCount}</span>
-                    <span className="text-blue-600">(1-200)</span>
-                  </Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Button size="sm" variant="outline" className="h-6 w-6 p-0" onClick={() => updateBusCount(busCount - 10)}><Minus className="w-3 h-3" /></Button>
-                    <Slider value={[busCount]} onValueChange={([v]) => updateBusCount(v)} min={1} max={200} step={1} className="flex-1" />
-                    <Button size="sm" variant="outline" className="h-6 w-6 p-0" onClick={() => updateBusCount(busCount + 10)}><Plus className="w-3 h-3" /></Button>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs font-semibold">Fleet Size</Label>
+                    <span className="text-sm font-bold text-indigo-600">{busCount} buses</span>
                   </div>
-                  <div className="flex justify-between text-[8px] text-muted-foreground mt-1">
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => updateBusCount(busCount - 10)}><Minus className="w-3 h-3" /></Button>
+                    <Slider value={[busCount]} onValueChange={([v]) => updateBusCount(v)} min={1} max={200} className="flex-1" />
+                    <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => updateBusCount(busCount + 10)}><Plus className="w-3 h-3" /></Button>
+                  </div>
+                  <div className="flex justify-between text-[8px] text-slate-400">
                     <span>1</span><span>50</span><span>100</span><span>150</span><span>200</span>
+                  </div>
+                </div>
+
+                {/* Scenario */}
+                <div className="mt-3 pt-3 border-t">
+                  <Label className="text-xs font-semibold mb-2 block">Scenario</Label>
+                  <div className="grid grid-cols-4 gap-1">
+                    {['normal', 'peak', 'emergency', 'festival'].map(s => (
+                      <button key={s} className={`px-2 py-1 text-[10px] font-medium rounded ${scenario === s ? 'bg-indigo-600 text-white' : 'bg-slate-100 hover:bg-slate-200'}`} onClick={() => changeScenario(s)}>
+                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Filters */}
-            <Card className="shadow-lg">
-              <CardContent className="p-2 space-y-2">
+            {/* Filters & Layers */}
+            <Card className="shadow-xl border-0">
+              <CardContent className="p-3 space-y-2">
                 <div>
-                  <Label className="text-xs">Route Filter</Label>
-                  <select value={selectedRoute} onChange={e => { setSelectedRoute(e.target.value); if(mapInstance.current) drawMarkers(buses, mapInstance.current); }} className="w-full text-xs border rounded px-2 py-1 mt-1">
+                  <Label className="text-xs font-semibold">Route</Label>
+                  <select value={selectedRoute} onChange={e => { setSelectedRoute(e.target.value); if(mapInstance.current) drawMarkers(buses, mapInstance.current); }} className="w-full text-xs border rounded px-2 py-1.5 mt-1">
                     <option value="all">All Routes</option>
-                    {Object.entries(ROUTES).map(([id, r]) => <option key={id} value={id}>{id} - {r.name}</option>)}
+                    {Object.entries(ROUTES).map(([id, r]) => <option key={id} value={id}>{id}</option>)}
                   </select>
                 </div>
-                <div>
-                  <Label className="text-xs">Min Occupancy: {occupancyThreshold}%</Label>
-                  <Slider value={[occupancyThreshold]} onValueChange={([v]) => { setOccupancyThreshold(v); if(mapInstance.current) drawMarkers(buses, mapInstance.current); }} min={0} max={100} className="mt-1" />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs flex items-center gap-1"><Thermometer className="w-3 h-3 text-red-500" />Delay Heatmap</span>
+                  <Button size="sm" variant={showHeatmap ? 'default' : 'ghost'} className="h-6 w-6 p-0" onClick={() => setShowHeatmap(!showHeatmap)}>
+                    {showHeatmap ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  </Button>
                 </div>
                 <div className="flex items-center gap-2">
-                  <input type="checkbox" checked={showEmergencyOnly} onChange={e => { setShowEmergencyOnly(e.target.checked); if(mapInstance.current) drawMarkers(buses, mapInstance.current); }} />
+                  <input type="checkbox" checked={showEmergencyOnly} onChange={e => { setShowEmergencyOnly(e.target.checked); if(mapInstance.current) drawMarkers(buses, mapInstance.current); }} className="rounded" />
                   <Label className="text-xs">Emergency Only</Label>
                 </div>
               </CardContent>
@@ -550,7 +677,7 @@ const WhatIfSimulator = () => {
           </div>
 
           {/* Legend */}
-          <div className="absolute bottom-2 left-2 z-[1000] bg-white/95 rounded-lg p-2 shadow text-[10px] flex gap-3">
+          <div className="absolute bottom-3 left-3 z-[1000] bg-white/95 backdrop-blur rounded-lg px-3 py-2 shadow-lg flex gap-4 text-[10px]">
             <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-green-500" />Active</span>
             <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-amber-500" />Delayed</span>
             <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-red-500" />Emergency</span>
@@ -558,142 +685,232 @@ const WhatIfSimulator = () => {
         </div>
 
         {/* Right Panel */}
-        <div className="w-[45%] bg-slate-50 overflow-y-auto p-2 space-y-3">
-          {/* What-If Simulator */}
-          <Card>
-            <CardHeader className="py-2 px-3 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-t-lg">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Zap className="w-4 h-4" />
-                What-If: Add Buses (1-100+)
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 space-y-3">
-              <div>
-                <Label className="text-xs flex justify-between">
-                  <span>Add buses to peak hours</span>
-                  <span className="font-bold text-purple-600">+{whatIfBuses}</span>
-                </Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Button size="sm" variant="outline" className="h-6 w-6 p-0" onClick={() => setWhatIfBuses(Math.max(0, whatIfBuses - 5))}><Minus className="w-3 h-3" /></Button>
-                  <Slider value={[whatIfBuses]} onValueChange={([v]) => setWhatIfBuses(v)} min={0} max={100} step={1} className="flex-1" />
-                  <Button size="sm" variant="outline" className="h-6 w-6 p-0" onClick={() => setWhatIfBuses(Math.min(100, whatIfBuses + 5))}><Plus className="w-3 h-3" /></Button>
-                </div>
-                <div className="flex justify-between text-[8px] text-muted-foreground mt-1">
-                  <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
-                </div>
-              </div>
+        <div className="w-[42%] bg-slate-50 flex flex-col overflow-hidden">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+            <TabsList className="w-full justify-start px-2 pt-2 bg-transparent">
+              <TabsTrigger value="simulation" className="text-xs">📊 Simulation</TabsTrigger>
+              <TabsTrigger value="whatif" className="text-xs">🔮 What-If</TabsTrigger>
+              <TabsTrigger value="admin" className="text-xs">⚙️ Admin</TabsTrigger>
+            </TabsList>
 
-              {whatIfResults && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="p-2 bg-green-50 border border-green-200 rounded text-center">
-                    <p className="text-[10px] text-green-600">Delay Reduction</p>
-                    <p className="text-lg font-bold text-green-700">-{whatIfResults.delayReduction}%</p>
-                    <p className="text-[9px]">{whatIfResults.currentDelay}m → {whatIfResults.newDelay}m</p>
-                  </div>
-                  <div className="p-2 bg-blue-50 border border-blue-200 rounded text-center">
-                    <p className="text-[10px] text-blue-600">Revenue Increase</p>
-                    <p className="text-lg font-bold text-blue-700">+₹{(whatIfResults.revenueIncrease/1000).toFixed(0)}k</p>
-                  </div>
-                  <div className="p-2 bg-amber-50 border border-amber-200 rounded text-center">
-                    <p className="text-[10px] text-amber-600">Operating Cost</p>
-                    <p className="text-lg font-bold text-amber-700">₹{(whatIfResults.operatingCost/1000).toFixed(0)}k</p>
-                  </div>
-                  <div className={`p-2 rounded text-center ${whatIfResults.netProfit > 0 ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
-                    <p className={`text-[10px] ${whatIfResults.netProfit > 0 ? 'text-emerald-600' : 'text-red-600'}`}>Net Profit</p>
-                    <p className={`text-lg font-bold ${whatIfResults.netProfit > 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                      {whatIfResults.netProfit > 0 ? '+' : ''}₹{(whatIfResults.netProfit/1000).toFixed(0)}k
-                    </p>
-                    <p className="text-[9px]">ROI: {whatIfResults.roi}%</p>
-                  </div>
-                </div>
-              )}
+            <div className="flex-1 overflow-y-auto p-2">
+              {/* Simulation Tab */}
+              <TabsContent value="simulation" className="mt-0 space-y-3">
+                {/* Status Distribution */}
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><PieChartIcon className="w-4 h-4" />Fleet Status</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-2">
+                    <ResponsiveContainer width="100%" height={100}>
+                      <PieChart>
+                        <Pie data={statusData} dataKey="value" cx="50%" cy="50%" outerRadius={40} label={({ name, value }) => value > 0 ? `${name}: ${value}` : ''}>
+                          {statusData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
-              {whatIfResults && (
-                <div className={`p-2 rounded-lg text-sm font-medium ${whatIfResults.netProfit > 0 ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                  {whatIfResults.netProfit > 0 
-                    ? `✅ Recommended! Adding ${whatIfBuses} buses generates ₹${(whatIfResults.netProfit/1000).toFixed(0)}k daily profit`
-                    : `⚠️ Caution: Adding ${whatIfBuses} buses results in ₹${Math.abs(whatIfResults.netProfit/1000).toFixed(0)}k daily loss`}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                {/* Route Distribution */}
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><BarChart3 className="w-4 h-4" />Buses by Route</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-2">
+                    <ResponsiveContainer width="100%" height={100}>
+                      <BarChart data={routeData}>
+                        <XAxis dataKey="route" tick={{ fontSize: 9 }} />
+                        <YAxis tick={{ fontSize: 9 }} />
+                        <Tooltip />
+                        <Bar dataKey="buses" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
-          {/* Admin Controls */}
-          <Card>
-            <CardHeader className="py-2 px-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Shield className="w-4 h-4 text-red-500" />
-                Admin Controls
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant="destructive" size="sm" className="w-full" onClick={triggerEmergency}>
-                  <AlertTriangle className="w-4 h-4 mr-1" /> Trigger Emergency
-                </Button>
-                <Button variant="outline" size="sm" className="w-full" onClick={clearAllEmergencies}>
-                  <CheckCircle2 className="w-4 h-4 mr-1" /> Clear Emergencies
-                </Button>
-                <Button variant="outline" size="sm" className="w-full" onClick={() => updateBusCount(busCount + 20)}>
-                  <Plus className="w-4 h-4 mr-1" /> Add 20 Buses
-                </Button>
-                <Button variant="outline" size="sm" className="w-full" onClick={() => updateBusCount(Math.max(1, busCount - 20))}>
-                  <Minus className="w-4 h-4 mr-1" /> Remove 20 Buses
-                </Button>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <Button variant="outline" size="sm" onClick={() => updateBusCount(25)}>25 Buses</Button>
-                <Button variant="outline" size="sm" onClick={() => updateBusCount(50)}>50 Buses</Button>
-                <Button variant="outline" size="sm" onClick={() => updateBusCount(100)}>100 Buses</Button>
-              </div>
-            </CardContent>
-          </Card>
+                {/* Demand Forecast */}
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><TrendingUp className="w-4 h-4 text-blue-500" />24h Demand</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-2">
+                    <ResponsiveContainer width="100%" height={80}>
+                      <AreaChart data={demandForecast}>
+                        <XAxis dataKey="hour" tick={{ fontSize: 8 }} />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="passengers" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
-          {/* Status Chart */}
-          <Card>
-            <CardHeader className="py-2 px-3">
-              <CardTitle className="text-sm">Fleet Status Distribution</CardTitle>
-            </CardHeader>
-            <CardContent className="p-2">
-              <ResponsiveContainer width="100%" height={120}>
-                <PieChart>
-                  <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={50} label={({ name, value }) => `${name}: ${value}`} labelLine={false}>
-                    {statusData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Activity Log */}
-          <Card>
-            <CardHeader className="py-2 px-3">
-              <CardTitle className="text-sm">Activity Log</CardTitle>
-            </CardHeader>
-            <CardContent className="p-2">
-              <ScrollArea className="h-32">
-                <div className="space-y-1">
-                  {activityLog.map((log, i) => (
-                    <div key={i} className="text-xs p-1 bg-slate-100 rounded flex justify-between">
-                      <span>{log.message}</span>
-                      <span className="text-muted-foreground">{log.time}</span>
+                {/* Peak Info */}
+                <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-orange-600 font-medium">Peak Route</p>
+                        <p className="text-xl font-bold text-orange-700">{stats.peakRoute}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-orange-600 font-medium">Occupancy</p>
+                        <p className="text-xl font-bold text-orange-700">{stats.peakOccupancy}% 🔥</p>
+                      </div>
                     </div>
-                  ))}
-                  {activityLog.length === 0 && <p className="text-xs text-center text-muted-foreground py-4">No activity yet</p>}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* What-If Tab */}
+              <TabsContent value="whatif" className="mt-0 space-y-3">
+                <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-indigo-50">
+                  <CardHeader className="py-2 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-t-lg">
+                    <CardTitle className="text-sm flex items-center gap-2"><Brain className="w-4 h-4" />What-If: Add Buses</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 space-y-3">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <Label className="text-xs">Buses to Add</Label>
+                        <span className="text-lg font-bold text-purple-700">+{whatIfBuses}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => setWhatIfBuses(Math.max(0, whatIfBuses - 5))}><Minus className="w-3 h-3" /></Button>
+                        <Slider value={[whatIfBuses]} onValueChange={([v]) => setWhatIfBuses(v)} min={0} max={100} className="flex-1" />
+                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => setWhatIfBuses(Math.min(100, whatIfBuses + 5))}><Plus className="w-3 h-3" /></Button>
+                      </div>
+                      <div className="flex justify-between text-[8px] text-slate-400 mt-1">
+                        <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
+                      </div>
+                    </div>
+
+                    {whatIfResults && (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="p-2 bg-white rounded-lg border border-green-200 text-center">
+                            <TrendingDown className="w-4 h-4 mx-auto text-green-600 mb-1" />
+                            <p className="text-lg font-bold text-green-700">-{whatIfResults.delayReduction}%</p>
+                            <p className="text-[9px] text-slate-500">Delay: {whatIfResults.currentDelay}→{whatIfResults.newDelay}m</p>
+                          </div>
+                          <div className="p-2 bg-white rounded-lg border border-blue-200 text-center">
+                            <TrendingUp className="w-4 h-4 mx-auto text-blue-600 mb-1" />
+                            <p className="text-lg font-bold text-blue-700">+₹{(whatIfResults.revenueIncrease/1000).toFixed(0)}k</p>
+                            <p className="text-[9px] text-slate-500">Revenue/day</p>
+                          </div>
+                          <div className="p-2 bg-white rounded-lg border border-amber-200 text-center">
+                            <DollarSign className="w-4 h-4 mx-auto text-amber-600 mb-1" />
+                            <p className="text-lg font-bold text-amber-700">₹{(whatIfResults.operatingCost/1000).toFixed(0)}k</p>
+                            <p className="text-[9px] text-slate-500">Cost/day</p>
+                          </div>
+                          <div className={`p-2 rounded-lg border text-center ${whatIfResults.netProfit > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                            <Target className={`w-4 h-4 mx-auto mb-1 ${whatIfResults.netProfit > 0 ? 'text-emerald-600' : 'text-red-600'}`} />
+                            <p className={`text-lg font-bold ${whatIfResults.netProfit > 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                              {whatIfResults.netProfit > 0 ? '+' : ''}₹{(whatIfResults.netProfit/1000).toFixed(0)}k
+                            </p>
+                            <p className="text-[9px] text-slate-500">Net Profit • ROI: {whatIfResults.roi}%</p>
+                          </div>
+                        </div>
+
+                        <div className={`p-3 rounded-lg ${whatIfResults.netProfit > 0 ? 'bg-green-100 border border-green-300' : 'bg-amber-100 border border-amber-300'}`}>
+                          <p className={`text-sm font-semibold ${whatIfResults.netProfit > 0 ? 'text-green-800' : 'text-amber-800'}`}>
+                            {whatIfResults.netProfit > 0 
+                              ? `✅ Recommended! +${whatIfBuses} buses = ₹${(whatIfResults.netProfit/1000).toFixed(0)}k daily profit`
+                              : `⚠️ Caution: Loss of ₹${Math.abs(whatIfResults.netProfit/1000).toFixed(0)}k/day`}
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Delay Hotspots */}
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><MapPin className="w-4 h-4 text-red-500" />Delay Hotspots</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-2 space-y-2">
+                    {DELAY_HOTSPOTS.map((h, i) => (
+                      <div key={i} className="flex items-center justify-between p-2 bg-slate-100 rounded">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${h.severity === 'high' ? 'bg-red-500 animate-pulse' : h.severity === 'medium' ? 'bg-amber-500' : 'bg-green-500'}`} />
+                          <span className="text-xs font-medium">{h.name}</span>
+                        </div>
+                        <span className="text-xs font-bold text-red-600">+{h.delay}min</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Admin Tab */}
+              <TabsContent value="admin" className="mt-0 space-y-3">
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><Shield className="w-4 h-4 text-red-500" />Admin Controls</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button variant="destructive" size="sm" onClick={triggerEmergency}>
+                        <AlertTriangle className="w-4 h-4 mr-1" />Emergency
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={clearEmergencies}>
+                        <CheckCircle2 className="w-4 h-4 mr-1" />Clear All
+                      </Button>
+                    </div>
+                    
+                    <div className="border-t pt-3">
+                      <Label className="text-xs font-semibold mb-2 block">Quick Fleet Size</Label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {[25, 50, 100, 150].map(n => (
+                          <Button key={n} variant="outline" size="sm" className="text-xs" onClick={() => updateBusCount(n)}>{n}</Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="border-t pt-3">
+                      <Label className="text-xs font-semibold mb-2 block">Bulk Actions</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button variant="outline" size="sm" onClick={() => updateBusCount(busCount + 25)}>
+                          <Plus className="w-4 h-4 mr-1" />+25 Buses
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => updateBusCount(Math.max(1, busCount - 25))}>
+                          <Minus className="w-4 h-4 mr-1" />-25 Buses
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Activity Log */}
+                <Card>
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm">Activity Log</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-2">
+                    <ScrollArea className="h-48">
+                      <div className="space-y-1">
+                        {activityLog.map((log, i) => (
+                          <div key={i} className="text-xs p-2 bg-slate-100 rounded flex justify-between items-center">
+                            <span>{log.message}</span>
+                            <span className="text-slate-400 text-[10px]">{log.time}</span>
+                          </div>
+                        ))}
+                        {!activityLog.length && <p className="text-xs text-center text-slate-400 py-8">No activity yet</p>}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </div>
+          </Tabs>
         </div>
       </div>
 
       <style>{`
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.2); opacity: 0.8; }
-        }
-        .bus-marker { background: transparent !important; border: none !important; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+        .sim-bus-marker { background: transparent !important; border: none !important; }
+        .leaflet-control-attribution { font-size: 9px !important; }
       `}</style>
     </div>
   );
