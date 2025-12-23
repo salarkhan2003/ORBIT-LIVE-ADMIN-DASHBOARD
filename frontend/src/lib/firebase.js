@@ -2,10 +2,34 @@
  * Firebase Configuration for APSRTC Live Tracking
  * Project: orbit-live-3836f
  * Realtime DB: https://orbit-live-3836f-default-rtdb.firebaseio.com
+ *
+ * Data Paths:
+ * - /live-telemetry/{vehicleId} - Live GPS data from drivers
+ * - /emergencies/{incidentId} - Emergency alerts
+ * - /incidents/{incidentId} - All incidents
+ * - /passes/{passId} - Passenger pass applications
+ * - /payments/{paymentId} - Payment transactions
+ * - /drivers/{driverId} - Driver profiles
+ * - /vehicles/{vehicleId} - Vehicle profiles
+ * - /routes/{routeId} - Route definitions
+ * - /trips/{tripId} - Trip summaries
+ * - /messages/{vehicleId} - Messages to drivers
  */
 
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, onValue } from 'firebase/database';
+import {
+  getDatabase,
+  ref,
+  onValue,
+  set,
+  update,
+  push,
+  remove,
+  query,
+  orderByChild,
+  limitToLast,
+  serverTimestamp
+} from 'firebase/database';
 
 // Firebase configuration from environment variables
 const firebaseConfig = {
@@ -22,5 +46,18 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// Export Firebase instances
-export { app, db };
+// Export Firebase instances and functions
+export {
+  app,
+  db,
+  ref,
+  onValue,
+  set,
+  update,
+  push,
+  remove,
+  query,
+  orderByChild,
+  limitToLast,
+  serverTimestamp
+};

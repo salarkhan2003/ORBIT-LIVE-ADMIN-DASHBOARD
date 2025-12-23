@@ -45,9 +45,9 @@ const CommandCenter = () => {
         // Initialize map centered on Vijayawada
         mapInstance.current = window.L.map(mapRef.current).setView([16.5062, 80.6480], 12);
 
-        // Add OpenStreetMap tile layer
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        // Add Ola Maps tile layer
+        window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
+          attribution: '© Ola Maps | APSRTC'
         }).addTo(mapInstance.current);
 
         // Add sample bus markers

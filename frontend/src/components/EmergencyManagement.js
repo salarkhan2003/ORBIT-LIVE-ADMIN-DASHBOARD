@@ -1,349 +1,566 @@
-import React, { useState } from 'react';
+/**
+ * APSRTC Control Room - Emergency Management
+ * Full implementation for emergency response coordination
+ */
+
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { 
-  AlertTriangle, 
-  Phone, 
-  MapPin, 
-  Clock, 
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Textarea } from './ui/textarea';
+import { ScrollArea } from './ui/scroll-area';
+import { Separator } from './ui/separator';
+import {
+  AlertTriangle,
+  Phone,
+  MapPin,
+  Clock,
   User,
+  Bus,
+  Siren,
   Shield,
-  Heart,
-  Flame,
-  Truck,
-  CheckCircle,
-  Bell,
-  Zap
+  RefreshCw,
+  Plus,
+  CheckCircle2,
+  X,
+  Radio,
+  Ambulance,
+  Bell
 } from 'lucide-react';
+import { db } from '../lib/firebase';
+import { ref, onValue, set, update, remove, push } from 'firebase/database';
 
 const EmergencyManagement = () => {
-  const [emergencyAlerts] = useState([
-    {
-      id: 'EMG001',
-      type: 'medical',
-      title: 'Medical Emergency',
-      description: 'Passenger experiencing chest pain, requires immediate medical attention',
-      busId: 'BUS003',
-      route: 'Route 28',
-      location: { lat: 28.4595, lng: 77.0266, address: 'Gurgaon Cyber City' },
-      reporter: 'Driver: Amit Sharma',
-      timestamp: new Date(Date.now() - 3 * 60000),
-      severity: 'critical',
+  const [emergencies, setEmergencies] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedEmergency, setSelectedEmergency] = useState(null);
+  const [showNewEmergency, setShowNewEmergency] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const mapRef = useRef(null);
+  const mapInstance = useRef(null);
+
+  // New emergency form
+  const [newEmergency, setNewEmergency] = useState({
+    type: 'medical',
+    vehicle_id: '',
+    description: '',
+    severity: 'high',
+    location_name: '',
+    contact_phone: ''
+  });
+
+  // Emergency types
+  const emergencyTypes = [
+    { value: 'medical', label: 'Medical Emergency', icon: '🏥', color: 'bg-red-500' },
+    { value: 'accident', label: 'Accident', icon: '💥', color: 'bg-orange-500' },
+    { value: 'breakdown', label: 'Vehicle Breakdown', icon: '🔧', color: 'bg-amber-500' },
+    { value: 'security', label: 'Security Threat', icon: '🚨', color: 'bg-purple-500' },
+    { value: 'fire', label: 'Fire', icon: '🔥', color: 'bg-red-600' },
+    { value: 'natural', label: 'Natural Disaster', icon: '🌊', color: 'bg-blue-500' }
+  ];
+
+  // Emergency contacts
+  const emergencyContacts = [
+    { name: 'Control Room', phone: '0866-2577777', type: 'primary' },
+    { name: 'Police', phone: '100', type: 'emergency' },
+    { name: 'Ambulance', phone: '108', type: 'emergency' },
+    { name: 'Fire', phone: '101', type: 'emergency' },
+    { name: 'District Collector', phone: '0866-2420022', type: 'official' }
+  ];
+
+  // Load emergencies from Firebase
+  useEffect(() => {
+    const emergenciesRef = ref(db, 'emergencies');
+
+    const unsubscribe = onValue(emergenciesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const list = Object.entries(data).map(([key, value]) => ({
+          id: key,
+          ...value
+        })).sort((a, b) => (b.reported_at || 0) - (a.reported_at || 0));
+        setEmergencies(list);
+      } else {
+        setEmergencies([]);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Initialize map
+  useEffect(() => {
+    if (!mapRef.current || mapInstance.current) return;
+
+    const loadMap = async () => {
+      if (!window.L) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(link);
+
+        await new Promise((resolve) => {
+          const script = document.createElement('script');
+          script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+          script.onload = resolve;
+          document.head.appendChild(script);
+        });
+      }
+
+      const map = window.L.map(mapRef.current, {
+        center: [16.5062, 80.6480],
+        zoom: 11
+      });
+
+      window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
+        attribution: '© Ola Maps | APSRTC'
+      }).addTo(map);
+
+      mapInstance.current = map;
+      updateMapMarkers();
+    };
+
+    loadMap();
+
+    return () => {
+      if (mapInstance.current) {
+        mapInstance.current.remove();
+        mapInstance.current = null;
+      }
+    };
+  }, []);
+
+  // Update map markers when emergencies change
+  useEffect(() => {
+    if (mapInstance.current) {
+      updateMapMarkers();
+    }
+  }, [emergencies]);
+
+  const updateMapMarkers = () => {
+    if (!mapInstance.current) return;
+
+    // Clear existing markers (simplified)
+    emergencies.forEach(emergency => {
+      if (emergency.lat && emergency.lon) {
+        const color = emergency.severity === 'critical' ? '#ef4444' :
+                      emergency.severity === 'high' ? '#f97316' : '#eab308';
+
+        window.L.circleMarker([emergency.lat, emergency.lon], {
+          radius: 12,
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.7,
+          weight: 3
+        }).bindPopup(`
+          <strong>${emergency.type?.toUpperCase()}</strong><br>
+          ${emergency.vehicle_id}<br>
+          ${emergency.location_name || 'Unknown location'}
+        `).addTo(mapInstance.current);
+      }
+    });
+  };
+
+  // Create emergency
+  const createEmergency = async () => {
+    if (!newEmergency.type || !newEmergency.description) {
+      alert('Please fill required fields');
+      return;
+    }
+
+    const emergencyId = `EMG-${Date.now()}`;
+    const emergencyData = {
+      id: emergencyId,
+      ...newEmergency,
       status: 'active',
-      responders: ['Ambulance dispatched', 'Local hospital notified'],
-      estimatedArrival: '5 minutes'
-    },
-    {
-      id: 'EMG002',
-      type: 'accident',
-      title: 'Minor Vehicle Collision',
-      description: 'Bus involved in minor collision at traffic junction, no injuries reported',
-      busId: 'BUS012',
-      route: 'Route 15',
-      location: { lat: 28.6139, lng: 77.2090, address: 'ITO Junction, Delhi' },
-      reporter: 'Conductor: Ravi Kumar',
-      timestamp: new Date(Date.now() - 8 * 60000),
-      severity: 'medium',
-      status: 'acknowledged',
-      responders: ['Traffic police notified', 'Backup bus dispatched'],
-      estimatedArrival: '12 minutes'
-    },
-    {
-      id: 'EMG003',
-      type: 'fire',
-      title: 'Smoke Detection',
-      description: 'Unusual smoke detected from engine compartment during routine operation',
-      busId: 'BUS007',
-      route: 'Route 42',
-      location: { lat: 28.7041, lng: 77.1025, address: 'Delhi University Gate' },
-      reporter: 'Driver: Suresh Singh',
-      timestamp: new Date(Date.now() - 15 * 60000),
-      severity: 'high',
-      status: 'resolved',
-      responders: ['Fire department contacted', 'Maintenance team dispatched'],
-      estimatedArrival: 'Resolved'
-    }
-  ]);
+      reported_at: Date.now(),
+      lat: 16.5062 + (Math.random() - 0.5) * 0.1,
+      lon: 80.6480 + (Math.random() - 0.5) * 0.1,
+      timeline: [
+        { time: Date.now(), event: 'Emergency reported', user: 'Control Room' }
+      ]
+    };
 
-  const [emergencyContacts] = useState([
-    { service: 'Police', number: '100', icon: Shield, color: 'text-blue-600' },
-    { service: 'Ambulance', number: '108', icon: Heart, color: 'text-red-600' },
-    { service: 'Fire Department', number: '101', icon: Flame, color: 'text-orange-600' },
-    { service: 'Traffic Control', number: '1073', icon: Truck, color: 'text-green-600' }
-  ]);
-
-  const [safetyChecklist] = useState([
-    { task: 'Evacuation Plan Review', completed: true, frequency: 'Monthly' },
-    { task: 'Emergency Equipment Check', completed: true, frequency: 'Weekly' },
-    { task: 'Driver Safety Training', completed: false, frequency: 'Quarterly' },
-    { task: 'First Aid Kit Inspection', completed: true, frequency: 'Monthly' },
-    { task: 'Communication System Test', completed: false, frequency: 'Weekly' },
-    { task: 'Emergency Contact Update', completed: true, frequency: 'Quarterly' }
-  ]);
-
-  const getEmergencyIcon = (type) => {
-    switch (type) {
-      case 'medical': return Heart;
-      case 'accident': return AlertTriangle;
-      case 'fire': return Flame;
-      case 'security': return Shield;
-      default: return Bell;
+    try {
+      await set(ref(db, `emergencies/${emergencyId}`), emergencyData);
+      setShowNewEmergency(false);
+      setNewEmergency({
+        type: 'medical',
+        vehicle_id: '',
+        description: '',
+        severity: 'high',
+        location_name: '',
+        contact_phone: ''
+      });
+    } catch (error) {
+      console.error('Error creating emergency:', error);
     }
   };
 
-  const getSeverityColor = (severity) => {
-    switch (severity) {
-      case 'critical': return 'destructive';
-      case 'high': return 'secondary';
-      case 'medium': return 'outline';
-      case 'low': return 'default';
-      default: return 'outline';
+  // Update emergency status
+  const updateEmergencyStatus = async (emergencyId, newStatus) => {
+    try {
+      const emergency = emergencies.find(e => e.id === emergencyId);
+      const timeline = emergency?.timeline || [];
+
+      await update(ref(db, `emergencies/${emergencyId}`), {
+        status: newStatus,
+        [newStatus === 'resolved' ? 'resolved_at' : 'updated_at']: Date.now(),
+        timeline: [...timeline, {
+          time: Date.now(),
+          event: `Status changed to ${newStatus}`,
+          user: 'Control Room'
+        }]
+      });
+    } catch (error) {
+      console.error('Error updating emergency:', error);
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'active': return 'destructive';
-      case 'acknowledged': return 'secondary';
-      case 'resolved': return 'default';
-      default: return 'outline';
+  // Delete emergency
+  const deleteEmergency = async (emergencyId) => {
+    if (!window.confirm('Delete this emergency record?')) return;
+    try {
+      await remove(ref(db, `emergencies/${emergencyId}`));
+      if (selectedEmergency?.id === emergencyId) {
+        setSelectedEmergency(null);
+      }
+    } catch (error) {
+      console.error('Error deleting emergency:', error);
     }
   };
 
-  const formatTimeAgo = (timestamp) => {
-    const now = new Date();
-    const diffInMinutes = Math.floor((now - timestamp) / (1000 * 60));
-    
-    if (diffInMinutes < 1) return 'Just now';
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-    
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `${diffInHours}h ago`;
-    
-    const diffInDays = Math.floor(diffInHours / 24);
-    return `${diffInDays}d ago`;
+  // Filter emergencies
+  const filteredEmergencies = emergencies.filter(e => {
+    if (statusFilter === 'all') return true;
+    return e.status === statusFilter;
+  });
+
+  // Stats
+  const stats = {
+    total: emergencies.length,
+    active: emergencies.filter(e => e.status === 'active' || e.status === 'responding').length,
+    critical: emergencies.filter(e => e.severity === 'critical').length,
+    resolved: emergencies.filter(e => e.status === 'resolved').length
   };
 
-  const handleEmergencyCall = (number) => {
-    console.log(`Initiating emergency call to ${number}`);
-    // In a real app, this would integrate with the communication system
+  // Get time ago
+  const getTimeAgo = (timestamp) => {
+    if (!timestamp) return 'Unknown';
+    const diff = Date.now() - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    return `${Math.floor(minutes / 60)}h ago`;
   };
 
-  const activeEmergencies = emergencyAlerts.filter(alert => alert.status === 'active').length;
-  const acknowledgedEmergencies = emergencyAlerts.filter(alert => alert.status === 'acknowledged').length;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <RefreshCw className="w-8 h-8 animate-spin text-red-500" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-1">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Emergency Management</h2>
-          <p className="text-muted-foreground">Real-time emergency response and safety management</p>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Siren className="w-7 h-7 text-red-500" />
+            Emergency Management
+          </h2>
+          <p className="text-muted-foreground">Coordinate emergency response and track incidents</p>
         </div>
-        <div className="flex items-center space-x-2">
-          <Badge variant="destructive" className="text-xs">
-            {activeEmergencies} Active
-          </Badge>
-          <Badge variant="secondary" className="text-xs">
-            {acknowledgedEmergencies} In Progress
-          </Badge>
-        </div>
+        <Button onClick={() => setShowNewEmergency(true)} className="gap-2 bg-red-500 hover:bg-red-600">
+          <Plus className="w-4 h-4" />
+          Report Emergency
+        </Button>
       </div>
 
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4 text-center">
+            <Bell className="w-6 h-6 mx-auto text-blue-500 mb-1" />
+            <p className="text-2xl font-bold">{stats.total}</p>
+            <p className="text-xs text-muted-foreground">Total</p>
+          </CardContent>
+        </Card>
+        <Card className={stats.active > 0 ? 'border-red-500 bg-red-50' : ''}>
+          <CardContent className="p-4 text-center">
+            <Radio className={`w-6 h-6 mx-auto mb-1 ${stats.active > 0 ? 'text-red-500 animate-pulse' : 'text-slate-400'}`} />
+            <p className="text-2xl font-bold">{stats.active}</p>
+            <p className="text-xs text-muted-foreground">Active</p>
+          </CardContent>
+        </Card>
+        <Card className={stats.critical > 0 ? 'border-orange-500 bg-orange-50' : ''}>
+          <CardContent className="p-4 text-center">
+            <AlertTriangle className={`w-6 h-6 mx-auto mb-1 ${stats.critical > 0 ? 'text-orange-500' : 'text-slate-400'}`} />
+            <p className="text-2xl font-bold">{stats.critical}</p>
+            <p className="text-xs text-muted-foreground">Critical</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <CheckCircle2 className="w-6 h-6 mx-auto text-emerald-500 mb-1" />
+            <p className="text-2xl font-bold">{stats.resolved}</p>
+            <p className="text-xs text-muted-foreground">Resolved</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Emergency Alerts */}
-        <div className="lg:col-span-2 space-y-4">
-          <h3 className="text-lg font-semibold">Active Emergency Alerts</h3>
-          {emergencyAlerts.map((alert) => {
-            const Icon = getEmergencyIcon(alert.type);
-            return (
-              <Card key={alert.id} className="border-l-4 border-l-red-500">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-start space-x-4">
-                      <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-                        <Icon className="w-6 h-6 text-red-600" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <h4 className="font-semibold text-lg">{alert.id}</h4>
-                          <Badge variant={getSeverityColor(alert.severity)}>
-                            {alert.severity.toUpperCase()}
-                          </Badge>
-                          <Badge variant={getStatusColor(alert.status)}>
-                            {alert.status.toUpperCase()}
-                          </Badge>
-                        </div>
-                        <h5 className="font-medium text-md mb-2">{alert.title}</h5>
-                        <p className="text-muted-foreground text-sm mb-3">{alert.description}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <MapPin className="w-4 h-4 text-muted-foreground" />
-                        <span>{alert.busId} - {alert.route}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <MapPin className="w-4 h-4 text-muted-foreground" />
-                        <span>{alert.location.address}</span>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <User className="w-4 h-4 text-muted-foreground" />
-                        <span>{alert.reporter}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Clock className="w-4 h-4 text-muted-foreground" />
-                        <span>{formatTimeAgo(alert.timestamp)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Response Status */}
-                  <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg mb-4">
-                    <h6 className="font-medium text-blue-900 dark:text-blue-100 mb-2">Response Status:</h6>
-                    <div className="space-y-1">
-                      {alert.responders.map((responder, index) => (
-                        <div key={index} className="flex items-center space-x-2 text-sm text-blue-800 dark:text-blue-200">
-                          <CheckCircle className="w-3 h-3" />
-                          <span>{responder}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {alert.estimatedArrival !== 'Resolved' && (
-                      <p className="text-sm text-blue-700 dark:text-blue-300 mt-2">
-                        <strong>ETA:</strong> {alert.estimatedArrival}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex space-x-2">
-                    {alert.status === 'active' && (
-                      <>
-                        <Button size="sm" variant="outline">
-                          Acknowledge
-                        </Button>
-                        <Button size="sm">
-                          <Zap className="w-4 h-4 mr-1" />
-                          Escalate
-                        </Button>
-                      </>
-                    )}
-                    {alert.status === 'acknowledged' && (
-                      <Button size="sm">
-                        Mark Resolved
-                      </Button>
-                    )}
-                    <Button size="sm" variant="outline">
-                      View Details
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* Emergency Contacts & Safety Checklist */}
-        <div className="space-y-6">
-          {/* Quick Emergency Contacts */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Phone className="w-5 h-5" />
-                <span>Emergency Contacts</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+        {/* Emergency List */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle>Emergency Incidents</CardTitle>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="border rounded-lg px-3 py-1.5 text-sm"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="responding">Responding</option>
+                <option value="resolved">Resolved</option>
+              </select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[400px]">
               <div className="space-y-3">
-                {emergencyContacts.map((contact, index) => {
-                  const Icon = contact.icon;
+                {filteredEmergencies.map((emergency) => {
+                  const typeInfo = emergencyTypes.find(t => t.value === emergency.type) || emergencyTypes[0];
                   return (
-                    <Button
-                      key={index}
-                      variant="outline"
-                      className="w-full justify-start h-auto p-4"
-                      onClick={() => handleEmergencyCall(contact.number)}
+                    <div
+                      key={emergency.id}
+                      className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        selectedEmergency?.id === emergency.id
+                          ? 'border-blue-500 bg-blue-50'
+                          : emergency.status === 'active'
+                            ? 'border-red-300 bg-red-50'
+                            : 'border-slate-200'
+                      }`}
+                      onClick={() => setSelectedEmergency(emergency)}
                     >
-                      <div className="flex items-center space-x-3">
-                        <Icon className={`w-5 h-5 ${contact.color}`} />
-                        <div className="text-left">
-                          <p className="font-medium">{contact.service}</p>
-                          <p className="text-sm text-muted-foreground">{contact.number}</p>
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3">
+                          <span className="text-2xl">{typeInfo.icon}</span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold">{emergency.vehicle_id || 'No Vehicle'}</span>
+                              <Badge className={typeInfo.color}>{typeInfo.label}</Badge>
+                              <Badge className={
+                                emergency.status === 'active' ? 'bg-red-500' :
+                                emergency.status === 'responding' ? 'bg-amber-500' :
+                                'bg-emerald-500'
+                              }>
+                                {emergency.status}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1">{emergency.description}</p>
+                            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {getTimeAgo(emergency.reported_at)}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />
+                                {emergency.location_name || 'Unknown'}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </Button>
+                    </div>
                   );
                 })}
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* Safety Checklist */}
+                {filteredEmergencies.length === 0 && (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Shield className="w-12 h-12 mx-auto mb-4 text-emerald-500" />
+                    <p>No emergencies reported</p>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+
+        {/* Emergency Details & Map */}
+        <div className="space-y-4">
+          {/* Quick Contacts */}
           <Card>
-            <CardHeader>
-              <CardTitle>Safety Checklist</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Emergency Contacts</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {safetyChecklist.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 border border-border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
-                        item.completed ? 'bg-green-500 border-green-500' : 'border-gray-300'
-                      }`}>
-                        {item.completed && <CheckCircle className="w-3 h-3 text-white" />}
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm">{item.task}</p>
-                        <p className="text-xs text-muted-foreground">{item.frequency}</p>
-                      </div>
-                    </div>
-                    {!item.completed && (
-                      <Button size="sm" variant="outline">
-                        Complete
-                      </Button>
-                    )}
-                  </div>
+              <div className="space-y-2">
+                {emergencyContacts.map((contact, idx) => (
+                  <a
+                    key={idx}
+                    href={`tel:${contact.phone}`}
+                    className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-colors"
+                  >
+                    <span className="text-sm font-medium">{contact.name}</span>
+                    <Badge variant="outline" className="font-mono">
+                      <Phone className="w-3 h-3 mr-1" />
+                      {contact.phone}
+                    </Badge>
+                  </a>
                 ))}
               </div>
             </CardContent>
           </Card>
 
-          {/* Emergency Stats */}
+          {/* Map */}
           <Card>
-            <CardHeader>
-              <CardTitle>Emergency Response Stats</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Emergency Locations</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="text-center p-3 bg-green-50 dark:bg-green-950 rounded-lg">
-                  <p className="text-2xl font-bold text-green-600">2.3 min</p>
-                  <p className="text-sm text-green-700 dark:text-green-300">Average Response Time</p>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3 text-center text-sm">
-                  <div className="p-2 bg-muted rounded-lg">
-                    <p className="font-bold">24</p>
-                    <p className="text-muted-foreground">This Month</p>
-                  </div>
-                  <div className="p-2 bg-muted rounded-lg">
-                    <p className="font-bold">98.5%</p>
-                    <p className="text-muted-foreground">Resolution Rate</p>
-                  </div>
-                </div>
+              <div ref={mapRef} className="h-[250px] rounded-lg bg-slate-100" />
+            </CardContent>
+          </Card>
+
+          {/* Selected Emergency Actions */}
+          {selectedEmergency && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Quick Actions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {selectedEmergency.status === 'active' && (
+                  <Button
+                    className="w-full gap-2 bg-amber-500 hover:bg-amber-600"
+                    onClick={() => updateEmergencyStatus(selectedEmergency.id, 'responding')}
+                  >
+                    <Radio className="w-4 h-4" />
+                    Mark as Responding
+                  </Button>
+                )}
+                {selectedEmergency.status !== 'resolved' && (
+                  <Button
+                    className="w-full gap-2 bg-emerald-500 hover:bg-emerald-600"
+                    onClick={() => updateEmergencyStatus(selectedEmergency.id, 'resolved')}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Resolve Emergency
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  className="w-full gap-2"
+                  onClick={() => deleteEmergency(selectedEmergency.id)}
+                >
+                  <X className="w-4 h-4" />
+                  Delete Record
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* New Emergency Modal */}
+      {showNewEmergency && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-red-600">🚨 Report Emergency</CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => setShowNewEmergency(false)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Emergency Type *</Label>
+                <select
+                  value={newEmergency.type}
+                  onChange={(e) => setNewEmergency({ ...newEmergency, type: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 mt-1"
+                >
+                  {emergencyTypes.map(type => (
+                    <option key={type.value} value={type.value}>{type.icon} {type.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <Label>Severity *</Label>
+                <select
+                  value={newEmergency.severity}
+                  onChange={(e) => setNewEmergency({ ...newEmergency, severity: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 mt-1"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+
+              <div>
+                <Label>Vehicle ID</Label>
+                <Input
+                  placeholder="e.g., AP39TB801"
+                  value={newEmergency.vehicle_id}
+                  onChange={(e) => setNewEmergency({ ...newEmergency, vehicle_id: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Location</Label>
+                <Input
+                  placeholder="e.g., Benz Circle, Vijayawada"
+                  value={newEmergency.location_name}
+                  onChange={(e) => setNewEmergency({ ...newEmergency, location_name: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Contact Phone</Label>
+                <Input
+                  placeholder="+91 9XXXXXXXXX"
+                  value={newEmergency.contact_phone}
+                  onChange={(e) => setNewEmergency({ ...newEmergency, contact_phone: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Description *</Label>
+                <Textarea
+                  placeholder="Describe the emergency..."
+                  value={newEmergency.description}
+                  onChange={(e) => setNewEmergency({ ...newEmergency, description: e.target.value })}
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" className="flex-1" onClick={() => setShowNewEmergency(false)}>
+                  Cancel
+                </Button>
+                <Button className="flex-1 bg-red-500 hover:bg-red-600" onClick={createEmergency}>
+                  Report Emergency
+                </Button>
               </div>
             </CardContent>
           </Card>
         </div>
-      </div>
+      )}
     </div>
   );
 };
 
 export default EmergencyManagement;
+

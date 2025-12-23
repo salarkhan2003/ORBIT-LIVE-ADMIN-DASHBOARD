@@ -1,480 +1,449 @@
-import React, { useState } from 'react';
+/**
+ * APSRTC Control Room - Feedback Management
+ * Customer feedback handling with Firebase
+ */
+
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { 
-  MessageSquare, 
-  Star, 
-  ThumbsUp, 
-  ThumbsDown, 
-  TrendingUp,
-  User,
+import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
+import { ScrollArea } from './ui/scroll-area';
+import {
+  MessageSquare,
+  Star,
+  ThumbsUp,
+  ThumbsDown,
   Clock,
-  MapPin,
+  User,
+  Bus,
+  RefreshCw,
+  Search,
   Filter,
-  Eye,
-  Reply,
-  BarChart3
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Send,
+  TrendingUp
 } from 'lucide-react';
+import { db } from '../lib/firebase';
+import { ref, onValue, set, update, remove } from 'firebase/database';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer
+} from 'recharts';
 
 const FeedbackManagement = () => {
-  const [feedback] = useState([
-    {
-      id: 'FB001',
-      passenger: 'Priya Sharma',
-      route: 'Route 42',
-      busId: 'BUS001',
-      rating: 5,
-      type: 'compliment',
-      category: 'Driver Behavior',
-      message: 'Excellent service! The driver was very courteous and helpful. Bus was clean and on time.',
-      timestamp: new Date(Date.now() - 2 * 60 * 60000),
-      status: 'new',
-      location: 'Connaught Place'
-    },
-    {
-      id: 'FB002',
-      passenger: 'Rajesh Kumar',
-      route: 'Route 15',
-      busId: 'BUS007',
-      rating: 2,
-      type: 'complaint',
-      category: 'Schedule Delay',
-      message: 'Bus was 20 minutes late today. This has been happening frequently on this route.',
-      timestamp: new Date(Date.now() - 4 * 60 * 60000),
-      status: 'acknowledged',
-      location: 'Airport Metro'
-    },
-    {
-      id: 'FB003',
-      passenger: 'Meera Patel',
-      route: 'Route 28',
-      busId: 'BUS012',
-      rating: 4,
-      type: 'suggestion',
-      category: 'Route Improvement',
-      message: 'Please consider adding a stop near the new shopping mall. Many passengers get off at the previous stop and walk.',
-      timestamp: new Date(Date.now() - 6 * 60 * 60000),
-      status: 'resolved',
-      location: 'University Gate'
-    },
-    {
-      id: 'FB004',
-      passenger: 'Amit Singh',
-      route: 'Route 7',
-      busId: 'BUS019',
-      rating: 1,
-      type: 'complaint',
-      category: 'Bus Condition',
-      message: 'AC was not working and the bus was very hot. Some seats were also broken.',
-      timestamp: new Date(Date.now() - 8 * 60 * 60000),
-      status: 'new',
-      location: 'Delhi University'
-    },
-    {
-      id: 'FB005',
-      passenger: 'Sunita Gupta',
-      route: 'Route 33',
-      busId: 'BUS025',
-      rating: 5,
-      type: 'compliment',
-      category: 'Overall Service',
-      message: 'Great experience! Digital ticketing worked smoothly and the journey was comfortable.',
-      timestamp: new Date(Date.now() - 12 * 60 * 60000),
-      status: 'acknowledged',
-      location: 'Laxmi Nagar'
-    }
-  ]);
+  const [feedbacks, setFeedbacks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedFeedback, setSelectedFeedback] = useState(null);
+  const [replyText, setReplyText] = useState('');
 
-  const [sentimentData] = useState({
-    positive: 68,
-    neutral: 22,
-    negative: 10,
-    averageRating: 4.2,
-    totalFeedback: 1247,
-    responseRate: 89.5
+  // Load feedbacks from Firebase
+  useEffect(() => {
+    const feedbackRef = ref(db, 'feedbacks');
+
+    const unsubscribe = onValue(feedbackRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const list = Object.entries(data).map(([key, value]) => ({
+          id: key,
+          ...value
+        })).sort((a, b) => (b.submitted_at || 0) - (a.submitted_at || 0));
+        setFeedbacks(list);
+      } else {
+        // Initialize with sample feedbacks
+        const sampleFeedbacks = generateSampleFeedbacks();
+        set(feedbackRef, sampleFeedbacks);
+        setFeedbacks(Object.values(sampleFeedbacks));
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Generate sample feedbacks
+  const generateSampleFeedbacks = () => {
+    const types = ['complaint', 'suggestion', 'appreciation', 'query'];
+    const routes = ['RJ-12', 'RJ-15', 'RJ-08', 'RJ-22'];
+    const sampleTexts = {
+      complaint: [
+        'Bus was 30 minutes late today',
+        'AC not working properly',
+        'Driver was rude',
+        'Bus was overcrowded'
+      ],
+      suggestion: [
+        'Please add more buses during peak hours',
+        'Night service on this route would be helpful',
+        'Need USB charging points',
+        'WiFi service would be great'
+      ],
+      appreciation: [
+        'Driver was very helpful',
+        'Clean and comfortable journey',
+        'On-time service, thank you!',
+        'Staff was courteous'
+      ],
+      query: [
+        'What is the first bus timing?',
+        'How to apply for monthly pass?',
+        'Is there concession for students?',
+        'Route timing information needed'
+      ]
+    };
+
+    const feedbacks = {};
+    for (let i = 0; i < 15; i++) {
+      const type = types[Math.floor(Math.random() * types.length)];
+      const id = `FB${Date.now() + i}`;
+      feedbacks[id] = {
+        id,
+        type,
+        route_id: routes[Math.floor(Math.random() * routes.length)],
+        message: sampleTexts[type][Math.floor(Math.random() * sampleTexts[type].length)],
+        customer_name: ['Ramesh Kumar', 'Priya Reddy', 'Suresh Naidu', 'Lakshmi Devi'][Math.floor(Math.random() * 4)],
+        customer_phone: `+91 98765${Math.floor(10000 + Math.random() * 90000)}`,
+        rating: type === 'appreciation' ? 5 : type === 'complaint' ? 2 : Math.floor(3 + Math.random() * 2),
+        status: ['pending', 'in_progress', 'resolved'][Math.floor(Math.random() * 3)],
+        submitted_at: Date.now() - Math.floor(Math.random() * 604800000) // Last 7 days
+      };
+    }
+    return feedbacks;
+  };
+
+  // Update feedback status
+  const updateFeedbackStatus = async (feedbackId, newStatus) => {
+    try {
+      await update(ref(db, `feedbacks/${feedbackId}`), {
+        status: newStatus,
+        updated_at: Date.now()
+      });
+    } catch (error) {
+      console.error('Error updating feedback:', error);
+    }
+  };
+
+  // Send reply
+  const sendReply = async () => {
+    if (!selectedFeedback || !replyText.trim()) return;
+
+    try {
+      await update(ref(db, `feedbacks/${selectedFeedback.id}`), {
+        status: 'resolved',
+        reply: replyText,
+        replied_at: Date.now(),
+        replied_by: 'Control Room Admin'
+      });
+      setReplyText('');
+      setSelectedFeedback(null);
+    } catch (error) {
+      console.error('Error sending reply:', error);
+    }
+  };
+
+  // Delete feedback
+  const deleteFeedback = async (feedbackId) => {
+    if (!window.confirm('Delete this feedback?')) return;
+    try {
+      await remove(ref(db, `feedbacks/${feedbackId}`));
+      if (selectedFeedback?.id === feedbackId) {
+        setSelectedFeedback(null);
+      }
+    } catch (error) {
+      console.error('Error deleting feedback:', error);
+    }
+  };
+
+  // Filter feedbacks
+  const filteredFeedbacks = feedbacks.filter(f => {
+    const matchesSearch = f.message?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         f.customer_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || f.status === statusFilter;
+    return matchesSearch && matchesStatus;
   });
 
-  const [categoryBreakdown] = useState([
-    { category: 'Driver Behavior', count: 234, sentiment: 'positive' },
-    { category: 'Schedule Delay', count: 189, sentiment: 'negative' },
-    { category: 'Bus Condition', count: 156, sentiment: 'neutral' },
-    { category: 'Route Improvement', count: 143, sentiment: 'positive' },
-    { category: 'Digital Services', count: 98, sentiment: 'positive' },
-    { category: 'Safety Concerns', count: 67, sentiment: 'negative' }
-  ]);
-
-  const getTypeColor = (type) => {
-    switch (type) {
-      case 'compliment': return 'default';
-      case 'complaint': return 'destructive';
-      case 'suggestion': return 'secondary';
-      default: return 'outline';
-    }
+  // Stats
+  const stats = {
+    total: feedbacks.length,
+    pending: feedbacks.filter(f => f.status === 'pending').length,
+    resolved: feedbacks.filter(f => f.status === 'resolved').length,
+    avgRating: feedbacks.length > 0
+      ? (feedbacks.reduce((sum, f) => sum + (f.rating || 0), 0) / feedbacks.length).toFixed(1)
+      : 0
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'new': return 'destructive';
-      case 'acknowledged': return 'secondary';
-      case 'resolved': return 'default';
-      default: return 'outline';
-    }
+  // Type distribution for pie chart
+  const typeDistribution = [
+    { name: 'Complaints', value: feedbacks.filter(f => f.type === 'complaint').length, color: '#ef4444' },
+    { name: 'Suggestions', value: feedbacks.filter(f => f.type === 'suggestion').length, color: '#3b82f6' },
+    { name: 'Appreciation', value: feedbacks.filter(f => f.type === 'appreciation').length, color: '#10b981' },
+    { name: 'Queries', value: feedbacks.filter(f => f.type === 'query').length, color: '#8b5cf6' }
+  ];
+
+  // Get time ago
+  const getTimeAgo = (timestamp) => {
+    if (!timestamp) return 'Unknown';
+    const diff = Date.now() - timestamp;
+    const hours = Math.floor(diff / 3600000);
+    if (hours < 1) return 'Just now';
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
   };
 
-  const getRatingColor = (rating) => {
-    if (rating >= 4) return 'text-green-600';
-    if (rating >= 3) return 'text-yellow-600';
-    return 'text-red-600';
+  // Get type badge
+  const getTypeBadge = (type) => {
+    const config = {
+      complaint: { color: 'bg-red-500', icon: '❌' },
+      suggestion: { color: 'bg-blue-500', icon: '💡' },
+      appreciation: { color: 'bg-green-500', icon: '👍' },
+      query: { color: 'bg-purple-500', icon: '❓' }
+    };
+    const cfg = config[type] || config.query;
+    return <Badge className={cfg.color}>{cfg.icon} {type}</Badge>;
   };
 
-  const getSentimentColor = (sentiment) => {
-    switch (sentiment) {
-      case 'positive': return 'text-green-600 bg-green-50 border-green-200';
-      case 'negative': return 'text-red-600 bg-red-50 border-red-200';
-      case 'neutral': return 'text-blue-600 bg-blue-50 border-blue-200';
-      default: return 'text-gray-600 bg-gray-50 border-gray-200';
-    }
-  };
-
-  const formatTimeAgo = (timestamp) => {
-    const now = new Date();
-    const diffInMinutes = Math.floor((now - timestamp) / (1000 * 60));
-    
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-    
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `${diffInHours}h ago`;
-    
-    const diffInDays = Math.floor(diffInHours / 24);
-    return `${diffInDays}d ago`;
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <RefreshCw className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-1">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Feedback & Community</h2>
-          <p className="text-muted-foreground">Passenger feedback analysis and community engagement</p>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <MessageSquare className="w-7 h-7 text-blue-500" />
+            Feedback Management
+          </h2>
+          <p className="text-muted-foreground">Handle customer feedback and complaints</p>
         </div>
-        <Button variant="outline">
-          <BarChart3 className="w-4 h-4 mr-2" />
-          Feedback Report
-        </Button>
+        <div className="flex gap-2">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 w-64"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="border rounded-lg px-3 py-2"
+          >
+            <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="resolved">Resolved</option>
+          </select>
+        </div>
       </div>
 
-      {/* Sentiment Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4">
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Positive Feedback</p>
-                <p className="text-2xl font-bold text-green-600">{sentimentData.positive}%</p>
-              </div>
-              <ThumbsUp className="w-8 h-8 text-green-600" />
-            </div>
+          <CardContent className="p-4 text-center">
+            <MessageSquare className="w-6 h-6 mx-auto text-blue-500 mb-1" />
+            <p className="text-2xl font-bold">{stats.total}</p>
+            <p className="text-xs text-muted-foreground">Total Feedbacks</p>
           </CardContent>
         </Card>
-        
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Average Rating</p>
-                <p className="text-2xl font-bold text-yellow-600">{sentimentData.averageRating}</p>
-                <div className="flex items-center space-x-1 mt-1">
-                  {[1,2,3,4,5].map(star => (
-                    <Star 
-                      key={star} 
-                      className={`w-3 h-3 ${star <= sentimentData.averageRating ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} 
-                    />
-                  ))}
-                </div>
-              </div>
-              <Star className="w-8 h-8 text-yellow-600" />
-            </div>
+        <Card className={stats.pending > 0 ? 'border-amber-500 bg-amber-50' : ''}>
+          <CardContent className="p-4 text-center">
+            <AlertCircle className={`w-6 h-6 mx-auto mb-1 ${stats.pending > 0 ? 'text-amber-500' : 'text-slate-400'}`} />
+            <p className="text-2xl font-bold">{stats.pending}</p>
+            <p className="text-xs text-muted-foreground">Pending</p>
           </CardContent>
         </Card>
-        
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Feedback</p>
-                <p className="text-2xl font-bold text-blue-600">{sentimentData.totalFeedback}</p>
-                <p className="text-xs text-muted-foreground">This month</p>
-              </div>
-              <MessageSquare className="w-8 h-8 text-blue-600" />
-            </div>
+          <CardContent className="p-4 text-center">
+            <CheckCircle2 className="w-6 h-6 mx-auto text-emerald-500 mb-1" />
+            <p className="text-2xl font-bold">{stats.resolved}</p>
+            <p className="text-xs text-muted-foreground">Resolved</p>
           </CardContent>
         </Card>
-        
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Response Rate</p>
-                <p className="text-2xl font-bold text-purple-600">{sentimentData.responseRate}%</p>
-                <p className="text-xs text-muted-foreground">Team responses</p>
-              </div>
-              <Reply className="w-8 h-8 text-purple-600" />
-            </div>
+          <CardContent className="p-4 text-center">
+            <Star className="w-6 h-6 mx-auto text-amber-500 fill-amber-500 mb-1" />
+            <p className="text-2xl font-bold">{stats.avgRating}</p>
+            <p className="text-xs text-muted-foreground">Avg Rating</p>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="feedback" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="feedback">Recent Feedback</TabsTrigger>
-          <TabsTrigger value="sentiment">Sentiment Analysis</TabsTrigger>
-          <TabsTrigger value="surveys">Surveys & Polls</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="feedback" className="space-y-4">
-          {/* Feedback Cards */}
-          <div className="space-y-4">
-            {feedback.map((item) => (
-              <Card key={item.id} className="card-hover">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-start space-x-4">
-                      <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                        <User className="w-5 h-5 text-white" />
-                      </div>
+      {/* Main Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Feedback List */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-2">
+            <CardTitle>Feedback Queue</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[450px]">
+              <div className="space-y-3">
+                {filteredFeedbacks.map((feedback) => (
+                  <div
+                    key={feedback.id}
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      selectedFeedback?.id === feedback.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : feedback.status === 'pending'
+                          ? 'border-amber-200 bg-amber-50/50'
+                          : 'border-slate-200'
+                    }`}
+                    onClick={() => setSelectedFeedback(feedback)}
+                  >
+                    <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <h4 className="font-semibold">{item.passenger}</h4>
-                          <Badge variant={getTypeColor(item.type)}>
-                            {item.type.toUpperCase()}
-                          </Badge>
-                          <Badge variant={getStatusColor(item.status)}>
-                            {item.status.toUpperCase()}
+                        <div className="flex items-center gap-2 mb-2">
+                          {getTypeBadge(feedback.type)}
+                          <Badge variant="outline">{feedback.route_id}</Badge>
+                          <Badge className={
+                            feedback.status === 'resolved' ? 'bg-emerald-500' :
+                            feedback.status === 'in_progress' ? 'bg-blue-500' :
+                            'bg-amber-500'
+                          }>
+                            {feedback.status}
                           </Badge>
                         </div>
-                        <div className="flex items-center space-x-1 mb-2">
-                          {[1,2,3,4,5].map(star => (
-                            <Star 
-                              key={star} 
-                              className={`w-4 h-4 ${star <= item.rating ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} 
-                            />
-                          ))}
-                          <span className={`ml-2 font-medium ${getRatingColor(item.rating)}`}>
-                            {item.rating}/5
+                        <p className="text-sm">{feedback.message}</p>
+                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            {feedback.customer_name}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {getTimeAgo(feedback.submitted_at)}
+                          </span>
+                          <span className="flex items-center">
+                            {[...Array(5)].map((_, i) => (
+                              <Star key={i} className={`w-3 h-3 ${i < feedback.rating ? 'text-amber-500 fill-amber-500' : 'text-slate-300'}`} />
+                            ))}
                           </span>
                         </div>
-                        <p className="text-muted-foreground text-sm mb-3">{item.message}</p>
                       </div>
                     </div>
                   </div>
+                ))}
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
-                    <div>
-                      <span className="text-muted-foreground">Route:</span>
-                      <p className="font-medium">{item.route}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Bus:</span>
-                      <p className="font-medium">{item.busId}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Category:</span>
-                      <p className="font-medium">{item.category}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Location:</span>
-                      <p className="font-medium">{item.location}</p>
-                    </div>
+                {filteredFeedbacks.length === 0 && (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <MessageSquare className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                    <p>No feedbacks found</p>
                   </div>
+                )}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
 
-                  <div className="flex items-center justify-between pt-3 border-t border-border">
-                    <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                      <Clock className="w-4 h-4" />
-                      <span>{formatTimeAgo(item.timestamp)}</span>
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button variant="outline" size="sm">
-                        <Eye className="w-4 h-4 mr-1" />
-                        View Details
-                      </Button>
-                      {item.status === 'new' && (
-                        <Button size="sm">
-                          <Reply className="w-4 h-4 mr-1" />
-                          Respond
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
+        {/* Details & Charts */}
+        <div className="space-y-4">
+          {/* Type Distribution */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Feedback Distribution</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={typeDistribution}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={40}
+                    outerRadius={70}
+                    dataKey="value"
+                    label={({ name, value }) => `${name}: ${value}`}
+                  >
+                    {typeDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
 
-        <TabsContent value="sentiment" className="space-y-4">
-          {/* Sentiment Analysis */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Selected Feedback Actions */}
+          {selectedFeedback && (
             <Card>
-              <CardHeader>
-                <CardTitle>Sentiment Distribution</CardTitle>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Actions</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-green-600">Positive</span>
-                      <span className="font-semibold">{sentimentData.positive}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div 
-                        className="bg-green-500 h-3 rounded-full" 
-                        style={{ width: `${sentimentData.positive}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-blue-600">Neutral</span>
-                      <span className="font-semibold">{sentimentData.neutral}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div 
-                        className="bg-blue-500 h-3 rounded-full" 
-                        style={{ width: `${sentimentData.neutral}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-red-600">Negative</span>
-                      <span className="font-semibold">{sentimentData.negative}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div 
-                        className="bg-red-500 h-3 rounded-full" 
-                        style={{ width: `${sentimentData.negative}%` }}
-                      ></div>
-                    </div>
-                  </div>
+              <CardContent className="space-y-3">
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <p className="text-sm font-medium">{selectedFeedback.customer_name}</p>
+                  <p className="text-xs text-muted-foreground">{selectedFeedback.customer_phone}</p>
                 </div>
+
+                {selectedFeedback.status !== 'resolved' && (
+                  <>
+                    <Textarea
+                      placeholder="Type your reply..."
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      rows={3}
+                    />
+                    <Button className="w-full gap-2" onClick={sendReply}>
+                      <Send className="w-4 h-4" />
+                      Send Reply & Resolve
+                    </Button>
+                  </>
+                )}
+
+                {selectedFeedback.status === 'pending' && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => updateFeedbackStatus(selectedFeedback.id, 'in_progress')}
+                  >
+                    Mark In Progress
+                  </Button>
+                )}
+
+                {selectedFeedback.reply && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-xs font-medium text-green-700">Reply sent:</p>
+                    <p className="text-sm">{selectedFeedback.reply}</p>
+                  </div>
+                )}
+
+                <Button
+                  variant="destructive"
+                  className="w-full"
+                  onClick={() => deleteFeedback(selectedFeedback.id)}
+                >
+                  Delete Feedback
+                </Button>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Feedback Categories</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {categoryBreakdown.map((category, index) => (
-                    <div key={index} className={`p-3 rounded-lg border ${getSentimentColor(category.sentiment)}`}>
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="font-medium">{category.category}</p>
-                          <p className="text-sm opacity-75">{category.count} feedback items</p>
-                        </div>
-                        <Badge variant={category.sentiment === 'positive' ? 'default' : 
-                                       category.sentiment === 'negative' ? 'destructive' : 'secondary'}>
-                          {category.sentiment.toUpperCase()}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="surveys" className="space-y-4">
-          {/* Surveys & Polls */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Active Surveys</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="p-4 border border-border rounded-lg">
-                    <h4 className="font-semibold mb-2">Service Quality Assessment</h4>
-                    <p className="text-sm text-muted-foreground mb-3">How satisfied are you with overall bus service quality?</p>
-                    <div className="flex justify-between text-sm">
-                      <span>Progress: 847/1000 responses</span>
-                      <span className="text-green-600">84.7%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                      <div className="bg-green-500 h-2 rounded-full" style={{ width: '84.7%' }}></div>
-                    </div>
-                  </div>
-                  
-                  <div className="p-4 border border-border rounded-lg">
-                    <h4 className="font-semibold mb-2">Route Expansion Preferences</h4>
-                    <p className="text-sm text-muted-foreground mb-3">Which areas should we prioritize for new routes?</p>
-                    <div className="flex justify-between text-sm">
-                      <span>Progress: 234/500 responses</span>
-                      <span className="text-blue-600">46.8%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                      <div className="bg-blue-500 h-2 rounded-full" style={{ width: '46.8%' }}></div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Polls</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
-                    <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">Best Time for Maintenance?</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between text-blue-800 dark:text-blue-200">
-                        <span>Late Night (11 PM - 5 AM)</span>
-                        <span className="font-medium">68%</span>
-                      </div>
-                      <div className="flex justify-between text-blue-800 dark:text-blue-200">
-                        <span>Early Morning (5 AM - 7 AM)</span>
-                        <span className="font-medium">22%</span>
-                      </div>
-                      <div className="flex justify-between text-blue-800 dark:text-blue-200">
-                        <span>Afternoon (2 PM - 4 PM)</span>
-                        <span className="font-medium">10%</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg">
-                    <h4 className="font-semibold text-green-900 dark:text-green-100 mb-2">Digital Payment Preference</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between text-green-800 dark:text-green-200">
-                        <span>UPI</span>
-                        <span className="font-medium">52%</span>
-                      </div>
-                      <div className="flex justify-between text-green-800 dark:text-green-200">
-                        <span>Mobile Wallet</span>
-                        <span className="font-medium">28%</span>
-                      </div>
-                      <div className="flex justify-between text-green-800 dark:text-green-200">
-                        <span>Card</span>
-                        <span className="font-medium">20%</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
 
 export default FeedbackManagement;
+

@@ -1,43 +1,48 @@
-/* Live Map Page - Full Screen Layout */
-.live-map-page {
+/* Live Map Page - APSRTC Control Room */
+
+.live-map-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
+  min-height: 500px;
+  width: 100%;
   background: #f8fafc;
-  overflow: hidden;
+  position: relative;
+}
+
+.live-map-container.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  height: 100vh;
 }
 
 /* Header */
-.live-map-header {
+.map-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
-  height: 64px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 100%);
+  color: white;
   flex-shrink: 0;
   z-index: 1000;
+  min-height: 50px;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
 }
 
-.header-title {
+.header-center {
+  flex: 1;
   display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.header-title h1 {
-  font-size: 18px;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0;
+  justify-content: center;
 }
 
 .header-right {
@@ -46,283 +51,146 @@
   gap: 8px;
 }
 
-/* Filter Panel */
-.filter-panel {
+/* Stats Row */
+.stats-row {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 12px 20px;
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
-}
-
-.filter-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.filter-group label {
-  font-size: 14px;
-  color: #64748b;
-}
-
-.filter-group select {
-  padding: 6px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 14px;
-  background: #ffffff;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.checkbox-label input {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-}
-
-
-/* Stats Bar */
-.stats-bar {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  padding: 12px 20px;
-  background: linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 100%);
-  color: white;
-  flex-shrink: 0;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .stat-item {
   display: flex;
   align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.stat-item.on-time {
+  color: #34d399;
+}
+
+.stat-item.delayed {
+  color: #fbbf24;
+}
+
+.stat-item.critical {
+  color: #f87171;
+}
+
+/* Filters */
+.filters-bar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.filter-item {
+  display: flex;
+  align-items: center;
   gap: 8px;
-}
-
-.stat-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-.stat-dot.green { background: #10b981; }
-.stat-dot.amber { background: #f59e0b; }
-.stat-dot.red { background: #ef4444; }
-
-.stat-value {
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.stat-label {
   font-size: 13px;
-  opacity: 0.85;
 }
 
-.last-update {
-  margin-left: auto;
+.filter-item label {
+  color: #64748b;
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  opacity: 0.85;
+  cursor: pointer;
 }
 
-/* Map Container - Full Screen */
-.map-container {
+.filter-item select {
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.filter-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+}
+
+/* Map Wrapper - IMPORTANT: This ensures map fills available space */
+.map-wrapper {
   flex: 1;
   position: relative;
-  min-height: 0;
+  overflow: hidden;
+  min-height: 400px;
 }
 
-.leaflet-map {
+.map-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   width: 100%;
   height: 100%;
-  background: #e5e7eb;
 }
 
-.map-loading {
+/* Vehicle Detail Panel */
+.vehicle-detail-panel {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  color: #64748b;
+  top: 16px;
+  right: 16px;
+  width: 280px;
+  z-index: 1001;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
 }
 
-/* No Vehicles Overlay */
-.no-vehicles-overlay {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(255, 255, 255, 0.95);
-  padding: 32px 48px;
-  border-radius: 16px;
-  text-align: center;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-}
-
-.no-vehicles-overlay h3 {
-  margin: 16px 0 8px;
-  font-size: 20px;
-  color: #0f172a;
-}
-
-.no-vehicles-overlay p {
-  margin: 0;
-  color: #64748b;
-}
-
-.no-vehicles-overlay .hint {
-  margin-top: 12px;
-  font-size: 13px;
-  color: #94a3b8;
-}
-
-/* Map Legend */
+/* Map Legend - Fixed positioning to prevent overlap */
 .map-legend {
   position: absolute;
-  bottom: 24px;
-  left: 24px;
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  z-index: 1000;
-  min-width: 160px;
-}
-
-.map-legend h4 {
+  bottom: 50px;
+  left: 16px;
+  background: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  z-index: 1001;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  margin: 0 0 12px;
-  color: #0f172a;
+  flex-direction: row;
+  gap: 12px;
+  font-size: 11px;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: #64748b;
-  margin-bottom: 8px;
-}
-
-.legend-item:last-child {
-  margin-bottom: 0;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .legend-dot {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.legend-dot.green { background: #10b981; }
-.legend-dot.amber { background: #f59e0b; }
-.legend-dot.red { background: #ef4444; }
-.legend-dot.blue { background: #3b82f6; }
-
-.legend-section {
-  margin-bottom: 12px;
+.legend-dot.on-time {
+  background: #10b981;
 }
 
-.legend-section:last-child {
-  margin-bottom: 0;
+.legend-dot.delayed {
+  background: #f59e0b;
 }
 
-.legend-section strong {
-  display: block;
-  font-size: 12px;
-  color: #374151;
-  margin-bottom: 6px;
+.legend-dot.critical {
+  background: #ef4444;
 }
 
-
-/* Vehicle Detail Panel */
-.vehicle-panel {
-  position: absolute;
-  top: 24px;
-  right: 24px;
-  width: 300px;
-  background: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  overflow: hidden;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-}
-
-.panel-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.panel-body {
-  padding: 16px;
-}
-
-.detail-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid #f1f5f9;
-  font-size: 14px;
-}
-
-.detail-row:last-child {
-  border-bottom: none;
-}
-
-.detail-row span:first-child {
-  color: #64748b;
-}
-
-.detail-row span:last-child {
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.detail-row .on-time { color: #10b981; }
-.detail-row .delayed { color: #f59e0b; }
-.detail-row .critical { color: #ef4444; }
-.detail-row .coords { font-family: monospace; font-size: 12px; }
-
-.panel-footer {
-  padding: 12px 16px;
-  background: #f8fafc;
-  border-top: 1px solid #e2e8f0;
-}
-
-.panel-footer button {
-  width: 100%;
+.legend-dot.stop {
+  background: #3b82f6;
 }
 
 /* Custom Bus Marker */
@@ -331,147 +199,81 @@
   border: none !important;
 }
 
-.bus-marker-wrapper {
-  transition: transform 0.3s ease;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+/* Leaflet Overrides */
+.leaflet-container {
+  font-family: system-ui, -apple-system, sans-serif;
+  width: 100% !important;
+  height: 100% !important;
 }
 
-/* Custom Popup Styles */
-.custom-popup .leaflet-popup-content-wrapper {
-  border-radius: 12px;
-  padding: 0;
-  overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+.leaflet-popup-content-wrapper {
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
 }
 
-.custom-popup .leaflet-popup-content {
+.leaflet-popup-content {
   margin: 0;
-  min-width: 220px;
+  padding: 0;
 }
 
-.custom-popup .leaflet-popup-tip {
-  background: #ffffff;
+.leaflet-popup-tip {
+  background: white;
 }
 
-.vehicle-popup .popup-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  color: white;
+/* Fix Ola Maps attribution - Bottom right, no overlap */
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  background: rgba(255,255,255,0.9) !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+  max-width: 150px !important;
 }
 
-.vehicle-popup .popup-header strong {
-  font-size: 14px;
+.leaflet-bottom.leaflet-right {
+  margin-right: 8px !important;
+  margin-bottom: 8px !important;
 }
 
-.vehicle-popup .route-tag {
-  background: rgba(255, 255, 255, 0.25);
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
+.leaflet-control-zoom {
+  margin-bottom: 60px !important;
 }
 
-.vehicle-popup .popup-content {
-  padding: 12px 16px;
-  background: #ffffff;
-}
-
-.vehicle-popup .popup-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  font-size: 13px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.vehicle-popup .popup-row:last-child {
-  border-bottom: none;
-}
-
-.vehicle-popup .popup-row span:first-child {
-  color: #64748b;
-}
-
-.vehicle-popup .popup-row span:last-child {
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.vehicle-popup .delay-value.on-time { color: #10b981; }
-.vehicle-popup .delay-value.delayed { color: #f59e0b; }
-.vehicle-popup .delay-value.critical { color: #ef4444; }
-
-/* Responsive */
+/* Mobile responsive */
 @media (max-width: 768px) {
-  .live-map-header {
-    flex-wrap: wrap;
-    height: auto;
-    padding: 12px;
-    gap: 12px;
+  .map-header {
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
   }
 
-  .header-title h1 {
-    font-size: 14px;
+  .header-left,
+  .header-center,
+  .header-right {
+    width: 100%;
+    justify-content: center;
   }
 
-  .stats-bar {
-    flex-wrap: wrap;
-    gap: 16px;
-    padding: 12px;
+  .stats-row {
+    gap: 8px;
   }
 
   .stat-item {
-    flex: 1;
-    min-width: 60px;
-    justify-content: center;
-  }
-
-  .last-update {
-    width: 100%;
-    justify-content: center;
-    margin: 8px 0 0;
+    font-size: 10px;
   }
 
   .map-legend {
-    bottom: 12px;
-    left: 12px;
-    padding: 12px;
-  }
-
-  .vehicle-panel {
-    top: auto;
-    bottom: 0;
-    right: 0;
-    left: 0;
-    width: 100%;
-    border-radius: 16px 16px 0 0;
-    max-height: 50vh;
-    overflow-y: auto;
-  }
-
-  .filter-panel {
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 6px;
+    bottom: 40px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
+
+  .vehicle-detail-panel {
+    width: calc(100% - 32px);
+    left: 16px;
+    right: 16px;
   }
 }
 
-/* Leaflet overrides */
-.leaflet-control-zoom {
-  border: none !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
-}
-
-.leaflet-control-zoom a {
-  background: #ffffff !important;
-  color: #0f172a !important;
-  border: none !important;
-  width: 36px !important;
-  height: 36px !important;
-  line-height: 36px !important;
-}
-
-.leaflet-control-zoom a:hover {
-  background: #f1f5f9 !important;
-}

@@ -50,104 +50,37 @@ const CentralLiveMap = ({ fullSize = false }) => {
     leafletJS.src = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js';
     leafletJS.onload = () => {
       if (window.L && mapRef.current) {
-        // Initialize map centered on Guntur (your actual location)
-        mapInstance.current = window.L.map(mapRef.current).setView([16.2989, 80.4414], 13);
+        // 🔥 RTGS FIX: HARDCODE GUNTUR CENTER - NO GEOLOCATION
+        const gunturCenter = { lat: 16.2924, lng: 80.4632 }; // Exact Guntur coordinates
+        
+        console.log('🎯 RTGS: Using hardcoded Guntur center - NO geolocation');
+        mapInstance.current = window.L.map(mapRef.current).setView([gunturCenter.lat, gunturCenter.lng], 12);
 
-        // Add OpenStreetMap tile layer
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        // Add Ola Maps tile layer
+        window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
+          attribution: '© Ola Maps | APSRTC'
         }).addTo(mapInstance.current);
 
-        // Get HIGH ACCURACY GPS location
-        if (navigator.geolocation) {
-          console.log('🛰️ Requesting HIGH ACCURACY GPS location...');
+        // Set user location to Guntur center
+        setUserLocation(gunturCenter);
 
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              const { latitude, longitude, accuracy } = position.coords;
-              console.log(`📍 GPS Location: ${latitude}, ${longitude} (accuracy: ${accuracy}m)`);
+        // Add Guntur center marker
+        const gunturMarker = window.L.marker([gunturCenter.lat, gunturCenter.lng], {
+          icon: window.L.divIcon({
+            className: 'user-location-marker',
+            html: '<div style="background: #10b981; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4);"></div>',
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
+          })
+        }).addTo(mapInstance.current);
 
-              // Check if this looks like Guntur area (16.2-16.4 lat, 80.3-80.5 lon)
-              const isGunturArea = (latitude >= 16.2 && latitude <= 16.4 && longitude >= 80.3 && longitude <= 80.5);
-
-              if (isGunturArea) {
-                console.log('✅ Location confirmed as Guntur area');
-              } else {
-                console.warn(`⚠️ Location seems wrong - showing ${latitude}, ${longitude} but you said you're in Guntur`);
-                console.warn('This might be cached/network location. Try refreshing or clearing browser location data.');
-              }
-
-              setUserLocation({ lat: latitude, lng: longitude });
-
-              // Center map on your GPS location (with null check)
-              if (mapInstance.current) {
-                mapInstance.current.setView([latitude, longitude], 15);
-              }
-
-              // Add user location marker with accuracy circle
-              const userMarker = window.L.marker([latitude, longitude], {
-                icon: window.L.divIcon({
-                  className: 'user-location-marker',
-                  html: '<div style="background: #3b82f6; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4);"></div>',
-                  iconSize: [24, 24],
-                  iconAnchor: [12, 12]
-                })
-              }).addTo(mapInstance.current);
-
-              // Add accuracy circle
-              const accuracyCircle = window.L.circle([latitude, longitude], {
-                radius: accuracy,
-                color: '#3b82f6',
-                fillColor: '#3b82f6',
-                fillOpacity: 0.1,
-                weight: 1
-              }).addTo(mapInstance.current);
-
-              userMarker.bindPopup(`
-                <strong>Your GPS Location</strong><br>
-                Lat: ${latitude.toFixed(6)}<br>
-                Lon: ${longitude.toFixed(6)}<br>
-                Accuracy: ${accuracy.toFixed(0)}m<br>
-                <small>${isGunturArea ? '✅ Guntur area' : '⚠️ Check if correct'}</small>
-              `);
-            },
-            (error) => {
-              console.error('🚨 Geolocation error:', error);
-              console.log('📍 Using Guntur coordinates as fallback');
-
-              // Fallback to Guntur center
-              const gunturLat = 16.2989;
-              const gunturLon = 80.4414;
-
-              if (mapInstance.current) {
-                mapInstance.current.setView([gunturLat, gunturLon], 13);
-              }
-              setUserLocation({ lat: gunturLat, lng: gunturLon });
-
-              const fallbackMarker = window.L.marker([gunturLat, gunturLon], {
-                icon: window.L.divIcon({
-                  className: 'user-location-marker',
-                  html: '<div style="background: #f59e0b; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4);"></div>',
-                  iconSize: [24, 24],
-                  iconAnchor: [12, 12]
-                })
-              }).addTo(mapInstance.current);
-
-              fallbackMarker.bindPopup(`
-                <strong>Fallback Location</strong><br>
-                Guntur Center<br>
-                <small>GPS failed - using city center</small>
-              `);
-            },
-            {
-              enableHighAccuracy: true,    // Force GPS instead of network
-              timeout: 10000,              // 10 second timeout
-              maximumAge: 0                // Don't use cached location
-            }
-          );
-        } else {
-          console.error('❌ Geolocation not supported by browser');
-        }
+        gunturMarker.bindPopup(`
+          <strong>🎯 RTGS Command Center</strong><br>
+          Guntur, Andhra Pradesh<br>
+          Lat: ${gunturCenter.lat}<br>
+          Lng: ${gunturCenter.lng}<br>
+          <small>✅ Fixed location - No GPS errors</small>
+        `);
       }
     };
     document.head.appendChild(leafletJS);
@@ -159,6 +92,18 @@ const CentralLiveMap = ({ fullSize = false }) => {
       }
     };
   }, []);
+
+  // 🔥 RTGS: Auto-refresh every 10 seconds for live demo
+  useEffect(() => {
+    const refreshInterval = setInterval(() => {
+      console.log('🔄 RTGS: Auto-refresh cycle - updating markers');
+      if (mapInstance.current && window.L) {
+        addBusMarkers();
+      }
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(refreshInterval);
+  }, [buses]);
 
   // Subscribe to Firebase for REAL vehicles only
   useEffect(() => {
@@ -176,7 +121,7 @@ const CentralLiveMap = ({ fullSize = false }) => {
 
           console.log('📍 Real vehicles from Firebase:', vehicleList.length);
 
-          // Convert Firebase format to component format
+          // Convert Firebase format to component format with timestamp
           const formattedBuses = vehicleList.map(v => ({
             id: v.vehicle_id,
             route: v.route_id || 'Unknown',
@@ -192,7 +137,8 @@ const CentralLiveMap = ({ fullSize = false }) => {
             delay: Math.round((v.predicted_delay_seconds || 0) / 60),
             lastUpdate: new Date().toLocaleTimeString(),
             speed: v.speed_kmph || 0,
-            direction: v.heading || 0
+            direction: v.heading || 0,
+            timestamp: v.timestamp || v.last_update || Date.now() // 🔥 RTGS: Add timestamp for filtering
           }));
 
           // If this is the first real vehicle, center map on it
@@ -224,23 +170,42 @@ const CentralLiveMap = ({ fullSize = false }) => {
   const addBusMarkers = () => {
     if (!window.L || !mapInstance.current) return;
 
-    console.log(`🗺️ CentralLiveMap updating markers - ${buses.length} real vehicles`);
+    console.log(`🚌 RTGS: Updating markers - ${buses.length} total vehicles`);
 
-    // Clear existing markers
+    // 🔥 RTGS FIX: Safe marker removal with null checks
     Object.values(realTimeMarkers).forEach(marker => {
-      mapInstance.current.removeLayer(marker);
+      try {
+        if (marker && mapInstance.current && mapInstance.current.hasLayer(marker)) {
+          mapInstance.current.removeLayer(marker);
+        }
+      } catch (error) {
+        console.warn('Error removing marker:', error);
+      }
     });
 
     const newMarkers = {};
-    const filteredBuses = buses.filter(bus => {
+    
+    // 🔥 RTGS MULTI-BUS FILTER: Only show ACTIVE vehicles (last 5 minutes)
+    const now = Date.now();
+    const activeVehicles = buses.filter(bus => {
+      // Check if vehicle is active (updated within 5 minutes)
+      const lastUpdate = bus.timestamp || Date.now(); // Fallback to now if no timestamp
+      const isRecent = (now - lastUpdate) < 5 * 60 * 1000; // 5 minutes
+      
+      if (!isRecent) {
+        console.log(`⏰ Vehicle ${bus.id} is stale - filtering out`);
+        return false;
+      }
+      
+      // Apply status filter
       if (mapFilter === 'all') return true;
       return bus.status === mapFilter;
     });
 
-    console.log(`🔍 After filtering: ${filteredBuses.length} vehicles to display`);
+    console.log(`🟢 RTGS: ${activeVehicles.length} ACTIVE vehicles (5min window) from ${buses.length} total`);
 
-    // Only add markers if there are real buses from Firebase
-    filteredBuses.forEach(bus => {
+    // Only add markers for ACTIVE buses from Firebase
+    activeVehicles.forEach(bus => {
       const iconColor = getStatusColor(bus.status);
 
       // Create bus marker with direction arrow
@@ -367,7 +332,14 @@ const CentralLiveMap = ({ fullSize = false }) => {
     }
   };
 
-  const filteredBuses = buses.filter(bus => {
+  // 🔥 RTGS: Calculate ACTIVE buses for counter
+  const now = Date.now();
+  const activeBuses = buses.filter(bus => {
+    const lastUpdate = bus.timestamp || Date.now();
+    return (now - lastUpdate) < 5 * 60 * 1000; // 5 minutes
+  });
+  
+  const filteredBuses = activeBuses.filter(bus => {
     if (mapFilter === 'all') return true;
     return bus.status === mapFilter;
   });
@@ -378,9 +350,13 @@ const CentralLiveMap = ({ fullSize = false }) => {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex flex-wrap items-center gap-2">
             <MapPin className="w-5 h-5" />
-            <span className="text-base font-semibold">Central Live Map</span>
-            <Badge variant="outline" className="text-xs">
-              {filteredBuses.length} buses
+            <span className="text-base font-semibold">RTGS Command Center</span>
+            <Badge 
+              variant="default" 
+              className="text-xs bg-green-600 hover:bg-green-700"
+              style={{ background: 'linear-gradient(45deg, #10b981, #059669)', color: 'white' }}
+            >
+              🚌 ACTIVE BUSES: {activeBuses.length}
             </Badge>
           </CardTitle>
           <div className="flex flex-wrap items-center gap-2">

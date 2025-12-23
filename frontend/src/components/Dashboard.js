@@ -34,11 +34,14 @@ import {
   BarChart,
   Award,
   Send,
-  Languages
+  Languages,
+  CreditCard,
+  Brain,
+  Truck,
+  Server
 } from 'lucide-react';
 import Header from './Header';
 import OverviewDashboard from './OverviewDashboard';
-import FleetMap from './FleetMap';
 import StatsCards from './StatsCards';
 import RealtimeAlerts from './RealtimeAlerts';
 import RouteManagement from './RouteManagement';
@@ -58,13 +61,22 @@ import AIFeedback from './AIFeedback';
 import AlertsNotifications from './AlertsNotifications';
 import AccessControls from './AccessControls';
 import Support from './Support';
+// NEW APSRTC Control Room Components
+import OperationsMap from './OperationsMap';
+import PassVerification from './PassVerification';
+import PaymentsReconciliation from './PaymentsReconciliation';
+import FleetDriverManagement from './FleetDriverManagement';
+import AIInsights from './AIInsights';
+import AlertsIncidentManager from './AlertsIncidentManager';
+import ReportingAnalytics from './ReportingAnalytics';
+import SimulationCenter from './SimulationCenter';
 
 const Dashboard = () => {
   const { theme, toggleTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('operations'); // Default to Operations Map
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeRegion, setActiveRegion] = useState('Vijayawada');
-  const [userRole, setUserRole] = useState('Planner');
+  const [userRole, setUserRole] = useState('Control Room Admin');
   const [isLive, setIsLive] = useState(true);
 
   // Update time every second
@@ -76,45 +88,83 @@ const Dashboard = () => {
   }, []);
 
   const sidebarItems = [
-    { id: 'overview', label: 'Fleet Overview', icon: BarChart3 },
-    { id: 'map', label: 'Live Map', icon: Map },
-    { id: 'routes', label: 'Route Management', icon: Route },
-    { id: 'tickets', label: 'Digital Tickets', icon: UserCheck },
-    { id: 'crowd', label: 'Crowd Analytics', icon: Users },
-    { id: 'emergency', label: 'Emergency', icon: AlertTriangle },
-    { id: 'environment', label: 'Environment', icon: Globe },
-    { id: 'staff', label: 'Staff Management', icon: UserCheck },
-    { id: 'feedback', label: 'Feedback', icon: MessageSquare },
-    { id: 'reports', label: 'Reports', icon: FileText },
-    { id: 'alerts', label: 'Alerts Center', icon: Bell },
-    { id: 'access', label: 'Access Controls', icon: Shield },
+    // PRIORITY: Operations & Control Room
+    { id: 'operations', label: 'Operations Map', icon: Map },
     { id: 'command', label: 'Command Center', icon: Play },
-    { id: 'simulator', label: 'What-If Simulator', icon: BarChart },
-    { id: 'driver', label: 'Driver KPI', icon: Award },
+    { id: 'incidents', label: 'Alerts & Incidents', icon: AlertTriangle },
+    // Routes & Scheduling
+    { id: 'routes', label: 'Route Management', icon: Route },
     { id: 'scheduling', label: 'Auto Scheduling', icon: Send },
+    // Passengers & Passes
+    { id: 'passes', label: 'Pass Verification', icon: CreditCard },
+    { id: 'tickets', label: 'Digital Tickets', icon: UserCheck },
+    // Payments
+    { id: 'payments', label: 'Payments', icon: DollarSign },
+    // AI & Analytics
+    { id: 'aiinsights', label: 'AI Insights', icon: Brain },
+    { id: 'analytics', label: 'Reports & Analytics', icon: BarChart3 },
+    // Fleet & Staff
+    { id: 'fleet', label: 'Fleet & Drivers', icon: Truck },
+    { id: 'staff', label: 'Staff Management', icon: UserCheck },
+    { id: 'driver', label: 'Driver KPI', icon: Award },
+    // Other modules
+    { id: 'overview', label: 'Fleet Overview', icon: Activity },
+    { id: 'crowd', label: 'Crowd Analytics', icon: Users }, { id: 'emergency', label: 'Emergency', icon: Bell },
+    { id: 'environment', label: 'Environment', icon: Globe },
+    { id: 'feedback', label: 'Feedback', icon: MessageSquare },
+    { id: 'reports', label: 'Reports Export', icon: FileText },
+    { id: 'simulator', label: 'What-If Simulator', icon: BarChart },
     { id: 'ai', label: 'AI Feedback', icon: Zap },
+    { id: 'access', label: 'Access Controls', icon: Shield },
     { id: 'accessibility', label: 'Accessibility', icon: Languages },
-    { id: 'support', label: 'Support', icon: Headphones }
+    { id: 'support', label: 'Support', icon: Headphones },
+    // Simulation
+    { id: 'simulation', label: 'Simulation Center', icon: Server }
   ];
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'overview':
-        return <OverviewDashboard />;
-      case 'map':
-        return <FleetMap fullSize />;
+      // PRIORITY: Operations & Control Room
+      case 'operations':
+        return <OperationsMap />;
+      case 'command':
+        return <CommandCenter />;
+      case 'incidents':
+        return <AlertsIncidentManager />;
+      // Routes & Scheduling
       case 'routes':
         return <RouteManagement />;
+      case 'scheduling':
+        return <AutoScheduling />;
+      // Passengers & Passes
+      case 'passes':
+        return <PassVerification />;
       case 'tickets':
         return <DigitalTicketing />;
+      // Payments
+      case 'payments':
+        return <PaymentsReconciliation />;
+      // AI & Analytics
+      case 'aiinsights':
+        return <AIInsights />;
+      case 'analytics':
+        return <ReportingAnalytics />;
+      // Fleet & Staff
+      case 'fleet':
+        return <FleetDriverManagement />;
+      case 'staff':
+        return <StaffManagement />;
+      case 'driver':
+        return <DriverKPI />;
+      // Other modules
+      case 'overview':
+        return <OverviewDashboard />;
       case 'crowd':
         return <CrowdAnalytics />;
       case 'emergency':
         return <EmergencyManagement />;
       case 'environment':
         return <EnvironmentalReporting />;
-      case 'staff':
-        return <StaffManagement />;
       case 'feedback':
         return <FeedbackManagement />;
       case 'reports':
@@ -123,32 +173,19 @@ const Dashboard = () => {
         return <AlertsNotifications />;
       case 'access':
         return <AccessControls />;
-      case 'command':
-        return <CommandCenter />;
       case 'simulator':
         return <WhatIfSimulator />;
-      case 'driver':
-        return <DriverKPI />;
-      case 'scheduling':
-        return <AutoScheduling />;
       case 'ai':
         return <AIFeedback />;
       case 'accessibility':
         return <LanguageAccessibility />;
       case 'support':
         return <Support />;
+      case 'simulation':
+        return <SimulationCenter />;
       default:
-        return (
-          <div className="flex items-center justify-center h-96">
-            <div className="text-center space-y-4">
-              <div className="w-16 h-16 mx-auto bg-muted rounded-full flex items-center justify-center">
-                <Settings className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold">Module Under Development</h3>
-              <p className="text-muted-foreground">This feature will be available soon.</p>
-            </div>
-          </div>
-        );
+        // Default to Operations Map
+        return <OperationsMap />;
     }
   };
 
@@ -172,12 +209,12 @@ const Dashboard = () => {
           {/* Logo and Header */}
           <div className="p-4 border-b border-border">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-r from-orange-500 to-red-600 rounded-lg flex items-center justify-center">
                 <Bus className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-foreground truncate">Orbit Live</h1>
-                <p className="text-xs text-muted-foreground truncate">Fleet Control Center</p>
+                <h1 className="text-lg font-bold text-foreground truncate">APSRTC Control</h1>
+                <p className="text-xs text-muted-foreground truncate">Operations Center</p>
               </div>
             </div>
           </div>
