@@ -104,18 +104,24 @@ const CrowdAnalytics = () => {
     if (!mapRef.current || mapInstance.current) return;
 
     const loadMap = async () => {
-      if (!window.L) {
+      // Load Leaflet CSS
+      if (!document.querySelector('link[href*="leaflet.css"]')) {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
         document.head.appendChild(link);
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
 
+      // Load Leaflet JS
+      if (!window.L) {
         await new Promise((resolve) => {
           const script = document.createElement('script');
           script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
           script.onload = resolve;
           document.head.appendChild(script);
         });
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       // Load heatmap plugin
@@ -124,21 +130,51 @@ const CrowdAnalytics = () => {
           const script = document.createElement('script');
           script.src = 'https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js';
           script.onload = resolve;
+          script.onerror = () => {
+            console.warn('Heatmap plugin failed to load, using fallback');
+            resolve();
+          };
           document.head.appendChild(script);
         });
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       const map = window.L.map(mapRef.current, {
         center: [16.5062, 80.6480],
-        zoom: 12
+        zoom: 12,
+        zoomControl: true,
+        maxZoom: 18,
+        minZoom: 8
       });
 
-      window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
-        attribution: '© Ola Maps'
-      }).addTo(map);
+      // Primary tile layer with fallback
+      const olaTiles = window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
+        attribution: '© Ola Maps',
+        maxZoom: 18,
+        minZoom: 8
+      });
+
+      const osmTiles = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 19,
+        minZoom: 8
+      });
+
+      // Try Ola first, fallback to OSM
+      olaTiles.on('tileerror', () => {
+        if (!map.hasLayer(osmTiles)) {
+          map.removeLayer(olaTiles);
+          osmTiles.addTo(map);
+        }
+      });
+      olaTiles.addTo(map);
 
       mapInstance.current = map;
-      updateHeatmap();
+      
+      // Fix map size after render
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 200);
     };
 
     loadMap();
@@ -151,6 +187,9 @@ const CrowdAnalytics = () => {
     };
   }, []);
 
+  // Store heatmap layer reference
+  const heatLayerRef = useRef(null);
+
   // Update heatmap when vehicles change
   useEffect(() => {
     if (mapInstance.current && vehicles.length > 0) {
@@ -159,20 +198,48 @@ const CrowdAnalytics = () => {
   }, [vehicles]);
 
   const updateHeatmap = () => {
-    if (!mapInstance.current || !window.L.heatLayer) return;
+    if (!mapInstance.current) return;
+
+    // Remove existing heatmap layer
+    if (heatLayerRef.current) {
+      mapInstance.current.removeLayer(heatLayerRef.current);
+      heatLayerRef.current = null;
+    }
 
     // Create heat points based on passenger density
     const heatPoints = vehicles
-      .filter(v => v.lat && v.lon)
-      .map(v => [v.lat, v.lon, (v.occupancy_percent || 50) / 100]);
+      .filter(v => v.lat && v.lon && !isNaN(v.lat) && !isNaN(v.lon))
+      .map(v => [v.lat, v.lon, Math.max(0.3, (v.occupancy_percent || 50) / 100)]);
 
-    if (heatPoints.length > 0) {
-      window.L.heatLayer(heatPoints, {
-        radius: 30,
-        blur: 20,
+    if (heatPoints.length > 0 && window.L && window.L.heatLayer) {
+      heatLayerRef.current = window.L.heatLayer(heatPoints, {
+        radius: 35,
+        blur: 25,
         maxZoom: 15,
-        gradient: { 0.2: '#10b981', 0.5: '#eab308', 0.8: '#f97316', 1: '#ef4444' }
+        max: 1.0,
+        gradient: { 
+          0.2: '#22c55e', 
+          0.4: '#84cc16',
+          0.6: '#eab308', 
+          0.8: '#f97316', 
+          1.0: '#ef4444' 
+        }
       }).addTo(mapInstance.current);
+      
+      console.log(`🔥 Heatmap updated with ${heatPoints.length} points`);
+    } else if (heatPoints.length > 0) {
+      // Fallback: Draw circles if heatmap plugin not available
+      heatPoints.forEach(([lat, lon, intensity]) => {
+        const color = intensity > 0.8 ? '#ef4444' : intensity > 0.5 ? '#f59e0b' : '#22c55e';
+        window.L.circle([lat, lon], {
+          radius: 200,
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.4,
+          weight: 1
+        }).addTo(mapInstance.current);
+      });
+      console.log(`📍 Fallback circles drawn for ${heatPoints.length} points`);
     }
   };
 

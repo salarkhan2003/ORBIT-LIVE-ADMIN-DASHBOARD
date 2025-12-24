@@ -1,6 +1,7 @@
 /**
  * APSRTC Control Room - Operations Map with Ola Maps
  * Professional 3D Map Integration with proper tile rendering
+ * NOW WITH ROAD-SNAPPED BUS MOVEMENT!
  * API Key: aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK
  */
 
@@ -41,8 +42,18 @@ import {
   createEmergency,
   sendMessageToDriver as sendMsg,
   reassignRoute as reassignRouteApi,
-  APSRTC_ROUTES
+  APSRTC_ROUTES,
+  VIJAYAWADA_ROUTES,
+  getRouteById,
+  getRouteIds,
+  getRoutePolyline
 } from '../services/DataSimulationService';
+import {
+  drawRoutePolylines,
+  drawRouteStops,
+  highlightRoute,
+  clearRoutePolylines
+} from './RoutePolylines';
 import {
   LineChart,
   Line,
@@ -84,12 +95,15 @@ const OperationsMap = ({ fullScreen = false }) => {
   const mapInstanceRef = useRef(null);
   const markersRef = useRef({});
   const busStopMarkersRef = useRef([]);
+  const routePolylinesRef = useRef([]);
+  const selectedRouteRef = useRef(null);
 
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(fullScreen);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [is3DMode, setIs3DMode] = useState(false);
+  const [showRouteLines, setShowRouteLines] = useState(true);
 
   // Vehicle state
   const [vehicles, setVehicles] = useState([]);
@@ -107,6 +121,68 @@ const OperationsMap = ({ fullScreen = false }) => {
   // Available routes (dynamically populated)
   const [availableRoutes, setAvailableRoutes] = useState(['all']);
 
+  // Draw route polylines on map
+  const drawRoutePolylinesOnMap = useCallback(() => {
+    if (!mapInstanceRef.current || !window.L || !showRouteLines) return;
+    
+    // Clear existing polylines
+    routePolylinesRef.current.forEach(p => mapInstanceRef.current.removeLayer(p));
+    routePolylinesRef.current = [];
+    
+    // Draw all routes from VIJAYAWADA_ROUTES
+    const routeIds = getRouteIds();
+    routeIds.forEach(routeId => {
+      const route = getRouteById(routeId);
+      if (!route?.waypoints) return;
+      
+      const coordinates = route.waypoints.map(wp => [wp.lat, wp.lng]);
+      const polyline = window.L.polyline(coordinates, {
+        color: route.color || '#FF6B35',
+        weight: 4,
+        opacity: 0.6,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(mapInstanceRef.current);
+      
+      polyline.bindPopup(`
+        <div style="min-width: 150px;">
+          <strong style="color: ${route.color};">${routeId}</strong>
+          <br><small>${route.name}</small>
+          <br><small>Distance: ${route.totalDistance} km</small>
+        </div>
+      `);
+      
+      routePolylinesRef.current.push(polyline);
+    });
+  }, [showRouteLines]);
+
+  // Highlight selected vehicle's route
+  const highlightSelectedRoute = useCallback((routeId) => {
+    if (!mapInstanceRef.current || !window.L) return;
+    
+    // Clear previous highlight
+    if (selectedRouteRef.current) {
+      mapInstanceRef.current.removeLayer(selectedRouteRef.current);
+      selectedRouteRef.current = null;
+    }
+    
+    if (!routeId) return;
+    
+    const route = getRouteById(routeId);
+    if (!route?.waypoints) return;
+    
+    const coordinates = route.waypoints.map(wp => [wp.lat, wp.lng]);
+    selectedRouteRef.current = window.L.polyline(coordinates, {
+      color: route.color || '#FF6B35',
+      weight: 6,
+      opacity: 0.9,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(mapInstanceRef.current);
+    
+    // Fit map to route
+    mapInstanceRef.current.fitBounds(selectedRouteRef.current.getBounds(), { padding: [50, 50] });
+  }, []);
   // Stats
   const [stats, setStats] = useState({
     total: 0,
@@ -248,6 +324,11 @@ const OperationsMap = ({ fullScreen = false }) => {
 
         console.log('✅ Ola Maps initialized successfully');
 
+        // Draw route polylines after map loads
+        setTimeout(() => {
+          drawRoutePolylinesOnMap();
+        }, 500);
+
       } catch (error) {
         console.error('Map initialization error:', error);
         setMapError('Failed to load map. Please refresh.');
@@ -262,7 +343,7 @@ const OperationsMap = ({ fullScreen = false }) => {
         mapInstanceRef.current = null;
       }
     };
-  }, []);
+  }, [drawRoutePolylinesOnMap]);
 
   // Subscribe to Firebase live-telemetry
   useEffect(() => {

@@ -1,6 +1,7 @@
 /**
  * FleetMap Component - Legacy Live Fleet Map
  * Real-time bus tracking with OpenStreetMap
+ * NOW WITH ROAD-SNAPPED ROUTES!
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -20,23 +21,41 @@ import {
   Search,
   Bus,
   AlertTriangle,
-  Activity
+  Activity,
+  Route
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { ref, onValue } from 'firebase/database';
+import { getRouteById, getRouteIds } from '../services/VijayawadaRoutes';
 
 // Vijayawada center
 const CENTER = { lat: 16.5062, lng: 80.6480 };
 
-// Bus stops
-const BUS_STOPS = [
-  { id: 'STOP-1', name: 'PNBS Bus Station', lat: 16.5065, lon: 80.6185 },
-  { id: 'STOP-2', name: 'Benz Circle', lat: 16.5060, lon: 80.6480 },
-  { id: 'STOP-3', name: 'Governorpet', lat: 16.5119, lon: 80.6332 },
-  { id: 'STOP-4', name: 'Railway Station', lat: 16.5188, lon: 80.6198 },
-  { id: 'STOP-5', name: 'Guntur', lat: 16.2989, lon: 80.4414 },
-  { id: 'STOP-6', name: 'Mangalagiri', lat: 16.4307, lon: 80.5686 }
-];
+// Get bus stops from VijayawadaRoutes
+const getBusStops = () => {
+  const stops = [];
+  const seenStops = new Set();
+  getRouteIds().forEach(routeId => {
+    const route = getRouteById(routeId);
+    if (route?.waypoints) {
+      route.waypoints.filter(wp => wp.stopName).forEach(wp => {
+        const key = `${wp.lat}-${wp.lng}`;
+        if (!seenStops.has(key)) {
+          seenStops.add(key);
+          stops.push({
+            id: `STOP-${stops.length + 1}`,
+            name: wp.stopName,
+            lat: wp.lat,
+            lon: wp.lng
+          });
+        }
+      });
+    }
+  });
+  return stops;
+};
+
+const BUS_STOPS = getBusStops();
 
 const FleetMap = ({ fullSize = false }) => {
   const mapRef = useRef(null);
@@ -80,18 +99,37 @@ const FleetMap = ({ fullSize = false }) => {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
 
-        // Create map
+        // Create map with proper zoom limits
         const map = window.L.map(mapRef.current, {
           center: [CENTER.lat, CENTER.lng],
           zoom: 11,
-          zoomControl: false
+          zoomControl: false,
+          maxZoom: 18,
+          minZoom: 8
         });
 
-        // Add Ola Maps tiles
-        window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
+        // Add Ola Maps tiles with OSM fallback
+        const olaTiles = window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
           attribution: '© Ola Maps | APSRTC',
-          maxZoom: 19
-        }).addTo(map);
+          maxZoom: 18,
+          minZoom: 8
+        });
+
+        const osmTiles = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap | APSRTC',
+          maxZoom: 19,
+          minZoom: 8
+        });
+
+        // Try Ola first, fallback to OSM on error
+        olaTiles.on('tileerror', () => {
+          if (!map.hasLayer(osmTiles)) {
+            console.log('Switching to OSM tiles');
+            map.removeLayer(olaTiles);
+            osmTiles.addTo(map);
+          }
+        });
+        olaTiles.addTo(map);
 
         // Add zoom control
         window.L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -112,12 +150,12 @@ const FleetMap = ({ fullSize = false }) => {
         mapInstance.current = map;
         setMapLoaded(true);
 
-        // Fix map rendering
+        // Fix map rendering after container is ready
         setTimeout(() => {
           if (map) map.invalidateSize();
-        }, 100);
+        }, 200);
 
-        console.log('✅ Legacy FleetMap initialized');
+        console.log('✅ FleetMap initialized with zoom limits');
 
       } catch (error) {
         console.error('Map init error:', error);

@@ -1,85 +1,72 @@
 /**
  * APSRTC Control Room - Real-time Data Simulation Service
  * Generates realistic live telemetry data for the hackathon demo
- * Simulates 50 buses with realistic Vijayawada routes
+ * NOW WITH ROAD-SNAPPED MOVEMENT - Buses follow actual Vijayawada roads!
  */
 
 import { db, ref, set, update, push } from '../lib/firebase';
+import {
+  VIJAYAWADA_ROUTES,
+  getRouteById,
+  getRouteIds,
+  getRoutePolyline,
+  ROAD_SPEED_LIMITS,
+  getTrafficMultiplier,
+  DELAY_HOTSPOTS
+} from './VijayawadaRoutes';
+import {
+  RoadSnappedBus,
+  RoadSnappedFleet,
+  roadSnappedFleet,
+  calculateRoadSnappedPosition,
+  calculateHeading
+} from './RoadSnappedMovement';
 
 // Ola Maps API Key
 export const OLA_MAPS_API_KEY = 'aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK';
 
-// APSRTC Route definitions for Vijayawada region
-export const APSRTC_ROUTES = {
-  'RJ-12': {
-    name: 'Vijayawada City - Benz Circle Loop',
-    stops: [
-      { id: 'S1', name: 'PNBS Vijayawada', lat: 16.5065, lon: 80.6185 },
-      { id: 'S2', name: 'Governorpet', lat: 16.5119, lon: 80.6332 },
-      { id: 'S3', name: 'Benz Circle', lat: 16.5060, lon: 80.6480 },
-      { id: 'S4', name: 'Railway Station', lat: 16.5188, lon: 80.6198 },
-      { id: 'S5', name: 'MG Road', lat: 16.5140, lon: 80.6280 }
-    ],
-    depot: 'Vijayawada',
-    avgTrips: 42,
-    capacity: 52
-  },
-  'RJ-15': {
-    name: 'Vijayawada - Guntur Express',
-    stops: [
-      { id: 'S1', name: 'PNBS Vijayawada', lat: 16.5065, lon: 80.6185 },
-      { id: 'S2', name: 'Mangalagiri', lat: 16.4307, lon: 80.5686 },
-      { id: 'S3', name: 'Guntur Bus Station', lat: 16.2989, lon: 80.4414 }
-    ],
-    depot: 'Vijayawada',
-    avgTrips: 28,
-    capacity: 48
-  },
-  'RJ-08': {
-    name: 'Vijayawada - Tenali Local',
-    stops: [
-      { id: 'S1', name: 'PNBS Vijayawada', lat: 16.5065, lon: 80.6185 },
-      { id: 'S2', name: 'Patamata', lat: 16.4850, lon: 80.6700 },
-      { id: 'S3', name: 'Tenali', lat: 16.2432, lon: 80.6400 }
-    ],
-    depot: 'Tenali',
-    avgTrips: 24,
-    capacity: 44
-  },
-  'RJ-22': {
-    name: 'One Town - Eluru Road',
-    stops: [
-      { id: 'S1', name: 'One Town', lat: 16.5100, lon: 80.6200 },
-      { id: 'S2', name: 'Eluru Road', lat: 16.4975, lon: 80.6559 },
-      { id: 'S3', name: 'Machavaram', lat: 16.5200, lon: 80.6100 }
-    ],
-    depot: 'Vijayawada',
-    avgTrips: 35,
-    capacity: 40
-  },
-  'RJ-05': {
-    name: 'Vijayawada - Amaravati Capital',
-    stops: [
-      { id: 'S1', name: 'PNBS Vijayawada', lat: 16.5065, lon: 80.6185 },
-      { id: 'S2', name: 'Undavalli', lat: 16.5090, lon: 80.5450 },
-      { id: 'S3', name: 'Amaravati', lat: 16.5730, lon: 80.3575 }
-    ],
-    depot: 'Vijayawada',
-    avgTrips: 18,
-    capacity: 52
-  },
-  'RJ-18': {
-    name: 'Guntur City Local',
-    stops: [
-      { id: 'S1', name: 'Guntur Bus Station', lat: 16.2989, lon: 80.4414 },
-      { id: 'S2', name: 'Arundelpet', lat: 16.3050, lon: 80.4500 },
-      { id: 'S3', name: 'Narasaraopet', lat: 16.2347, lon: 80.0478 }
-    ],
-    depot: 'Guntur',
-    avgTrips: 32,
-    capacity: 44
-  }
+// Re-export road-snapped utilities
+export {
+  VIJAYAWADA_ROUTES,
+  getRouteById,
+  getRouteIds,
+  getRoutePolyline,
+  ROAD_SPEED_LIMITS,
+  DELAY_HOTSPOTS,
+  RoadSnappedBus,
+  RoadSnappedFleet,
+  roadSnappedFleet,
+  calculateRoadSnappedPosition,
+  calculateHeading
 };
+
+// APSRTC Route definitions - Now using detailed waypoints from VijayawadaRoutes.js
+// Legacy format for backward compatibility
+export const APSRTC_ROUTES = Object.fromEntries(
+  getRouteIds().map(routeId => {
+    const route = getRouteById(routeId);
+    const stops = route.waypoints
+      .filter(wp => wp.stopName)
+      .map((wp, idx) => ({
+        id: `S${idx + 1}`,
+        name: wp.stopName,
+        lat: wp.lat,
+        lon: wp.lng
+      }));
+    
+    return [routeId, {
+      name: route.name,
+      stops,
+      depot: routeId.includes('18') ? 'Guntur' : routeId.includes('15') ? 'Tenali' : 'Vijayawada',
+      avgTrips: Math.floor(route.avgTripTime ? 480 / route.avgTripTime : 30),
+      capacity: 52,
+      color: route.color,
+      totalDistance: route.totalDistance,
+      avgTripTime: route.avgTripTime,
+      waypoints: route.waypoints // Include full waypoints for road-snapped movement
+    }];
+  })
+);
 
 // Driver names for simulation
 const DRIVER_NAMES = [
@@ -107,8 +94,10 @@ const randomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 // Get random number between min and max
 const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-// Calculate GPS position along route
+// Calculate GPS position along route using ROAD-SNAPPED waypoints
 const interpolatePosition = (stops, progress) => {
+  // This is now a legacy function - use calculateRoadSnappedPosition instead
+  // Keeping for backward compatibility
   const totalSegments = stops.length - 1;
   const segmentIndex = Math.min(Math.floor(progress * totalSegments), totalSegments - 1);
   const segmentProgress = (progress * totalSegments) - segmentIndex;
@@ -116,16 +105,15 @@ const interpolatePosition = (stops, progress) => {
   const start = stops[segmentIndex];
   const end = stops[Math.min(segmentIndex + 1, stops.length - 1)];
 
-  // Add some randomness for realistic movement
-  const jitter = 0.0005;
-  const lat = start.lat + (end.lat - start.lat) * segmentProgress + (Math.random() - 0.5) * jitter;
-  const lon = start.lon + (end.lon - start.lon) * segmentProgress + (Math.random() - 0.5) * jitter;
+  // Smooth interpolation without random jitter for road-snapped movement
+  const lat = start.lat + (end.lat - start.lat) * segmentProgress;
+  const lon = start.lon + (end.lon - start.lon) * segmentProgress;
 
   return { lat, lon };
 };
 
-// Calculate heading based on movement direction
-const calculateHeading = (prevLat, prevLon, currLat, currLon) => {
+// Calculate heading based on movement direction (legacy)
+const calculateHeadingLegacy = (prevLat, prevLon, currLat, currLon) => {
   const dLon = currLon - prevLon;
   const dLat = currLat - prevLat;
   let heading = Math.atan2(dLon, dLat) * (180 / Math.PI);
@@ -133,80 +121,74 @@ const calculateHeading = (prevLat, prevLon, currLat, currLon) => {
   return Math.round(heading);
 };
 
-// Generate simulated vehicles
-export const generateSimulatedVehicles = () => {
+// Generate simulated vehicles using ROAD-SNAPPED movement
+export const generateSimulatedVehicles = (count = 50) => {
   const vehicles = [];
-  const routes = Object.keys(APSRTC_ROUTES);
+  const routeIds = getRouteIds();
 
-  let vehicleIndex = 0;
+  for (let i = 0; i < count; i++) {
+    const routeId = routeIds[i % routeIds.length];
+    const vehicleId = generateVehicleId(routeId, i);
+    const route = getRouteById(routeId);
+    
+    // Random starting position along route (0-1 progress)
+    const progress = Math.random();
+    
+    // Get road-snapped position
+    const position = calculateRoadSnappedPosition(routeId, progress);
+    
+    if (!position) continue;
 
-  routes.forEach((routeId) => {
-    const route = APSRTC_ROUTES[routeId];
-    const busCount = Math.floor(route.avgTrips / 5); // ~5-8 buses per route
+    // Simulate occupancy (more during peak hours)
+    const hour = new Date().getHours();
+    const isPeakHour = (hour >= 7 && hour <= 10) || (hour >= 17 && hour <= 20);
+    const baseOccupancy = isPeakHour ? 0.7 : 0.4;
+    const occupancy = Math.min(1, baseOccupancy + (Math.random() * 0.3));
+    const capacity = 52;
+    const currentPassengers = Math.floor(capacity * occupancy);
+    const seatsAvailable = capacity - currentPassengers;
 
-    for (let i = 0; i < busCount; i++) {
-      const vehicleId = generateVehicleId(routeId, vehicleIndex);
-      const progress = Math.random(); // 0 to 1, position along route
-      const position = interpolatePosition(route.stops, progress);
-      const currentStopIndex = Math.floor(progress * route.stops.length);
-
-      // Simulate occupancy (more during peak hours)
-      const hour = new Date().getHours();
-      const isPeakHour = (hour >= 7 && hour <= 10) || (hour >= 17 && hour <= 20);
-      const baseOccupancy = isPeakHour ? 0.7 : 0.4;
-      const occupancy = Math.min(1, baseOccupancy + (Math.random() * 0.3));
-      const currentPassengers = Math.floor(route.capacity * occupancy);
-      const seatsAvailable = route.capacity - currentPassengers;
-
-      // Simulate delay (higher chance at Benz Circle area)
-      let delaySeconds = 0;
-      if (position.lat > 16.50 && position.lon > 80.64) {
-        delaySeconds = randomBetween(180, 720); // 3-12 min delay at Benz Circle
-      } else if (Math.random() > 0.7) {
-        delaySeconds = randomBetween(60, 300); // Random delays elsewhere
-      }
-
-      // Speed based on area
-      const speed = position.lat > 16.50 && position.lon > 80.64
-        ? randomBetween(12, 25) // Slower in city
-        : randomBetween(25, 45); // Faster on highways
-
-      vehicles.push({
-        vehicle_id: vehicleId,
-        route_id: routeId,
-        route_name: route.name,
-        depot: route.depot,
-        lat: position.lat,
-        lon: position.lon,
-        heading: randomBetween(0, 360),
-        speed_kmph: speed,
-        status: delaySeconds > 300 ? 'delayed' : 'running',
-        is_active: true,
-        passengers: currentPassengers,
-        capacity: route.capacity,
-        seats_available: seatsAvailable,
-        occupancy_percent: Math.round(occupancy * 100),
-        predicted_delay_seconds: delaySeconds,
-        driver_id: `DRV-${String(vehicleIndex + 1).padStart(3, '0')}`,
-        driver_name: randomItem(DRIVER_NAMES),
-        conductor_name: randomItem(CONDUCTOR_NAMES),
-        trip_id: `TRIP-${Date.now()}-${vehicleIndex}`,
-        current_stop_index: currentStopIndex,
-        current_stop: route.stops[currentStopIndex]?.name || route.stops[0].name,
-        next_stop: route.stops[Math.min(currentStopIndex + 1, route.stops.length - 1)]?.name || 'Terminal',
-        eta_next_stop: Math.floor(Date.now() / 1000) + randomBetween(120, 600),
-        timestamp: Date.now(),
-        last_update: Date.now(),
-        fuel_level: randomBetween(30, 95),
-        battery_voltage: 12.4 + (Math.random() * 0.8),
-        gps_accuracy: randomBetween(3, 15),
-        emergency: false,
-        progress: progress
-      });
-
-      vehicleIndex++;
+    // Delay based on position (hotspots add delay)
+    let delaySeconds = Math.round(position.delayMinutes * 60);
+    if (Math.random() > 0.7) {
+      delaySeconds += randomBetween(60, 300);
     }
-  });
+
+    vehicles.push({
+      vehicle_id: vehicleId,
+      route_id: routeId,
+      route_name: route?.name || 'Unknown',
+      depot: APSRTC_ROUTES[routeId]?.depot || 'Vijayawada',
+      lat: position.lat,
+      lon: position.lng,
+      heading: position.heading,
+      speed_kmph: position.speed,
+      road_type: position.roadType,
+      status: delaySeconds > 300 ? 'delayed' : 'running',
+      is_active: true,
+      passengers: currentPassengers,
+      capacity: capacity,
+      seats_available: seatsAvailable,
+      occupancy_percent: Math.round(occupancy * 100),
+      predicted_delay_seconds: delaySeconds,
+      driver_id: `DRV-${String(i + 1).padStart(3, '0')}`,
+      driver_name: randomItem(DRIVER_NAMES),
+      conductor_name: randomItem(CONDUCTOR_NAMES),
+      trip_id: `TRIP-${Date.now()}-${i}`,
+      current_stop_index: position.stopIndex || 0,
+      current_stop: position.currentStop || 'En Route',
+      next_stop: position.nextStop || 'Terminal',
+      eta_next_stop: Math.floor(Date.now() / 1000) + randomBetween(120, 600),
+      timestamp: Date.now(),
+      last_update: Date.now(),
+      fuel_level: randomBetween(30, 95),
+      battery_voltage: 12.4 + (Math.random() * 0.8),
+      gps_accuracy: randomBetween(3, 15),
+      emergency: false,
+      progress: progress,
+      waypoint_index: position.waypointIndex
+    });
+  }
 
   return vehicles;
 };
@@ -471,44 +453,63 @@ export const initializeFirebaseData = async () => {
   }
 };
 
-// Update vehicle positions (simulate movement)
-export const updateVehiclePositions = async (vehicles) => {
+// Update vehicle positions using ROAD-SNAPPED movement
+export const updateVehiclePositions = async (vehicles, speedMultiplier = 1) => {
   const updates = {};
   const now = Date.now();
 
   vehicles.forEach(vehicle => {
-    const route = APSRTC_ROUTES[vehicle.route_id];
+    const route = getRouteById(vehicle.route_id);
     if (!route) return;
 
-    // Move vehicle along route
-    let newProgress = (vehicle.progress || 0) + (0.002 + Math.random() * 0.003);
+    // Calculate new progress along route
+    const avgTripTimeSeconds = (route.avgTripTime || 45) * 60;
+    const progressPerSecond = 1 / avgTripTimeSeconds;
+    const trafficMultiplier = getTrafficMultiplier();
+    
+    // Time since last update (assume 2 second intervals)
+    const elapsed = 2;
+    const progressIncrement = progressPerSecond * elapsed * speedMultiplier * trafficMultiplier;
+    
+    let newProgress = (vehicle.progress || 0) + progressIncrement;
     if (newProgress > 1) newProgress = 0; // Loop back
 
-    const newPosition = interpolatePosition(route.stops, newProgress);
-    const heading = calculateHeading(vehicle.lat, vehicle.lon, newPosition.lat, newPosition.lon);
+    // Get road-snapped position
+    const position = calculateRoadSnappedPosition(vehicle.route_id, newProgress);
+    if (!position) return;
 
-    // Random seat changes
+    // Calculate heading from movement
+    const heading = calculateHeading(vehicle.lat, vehicle.lon, position.lat, position.lng);
+
+    // Random seat changes at stops
     let seatsAvailable = vehicle.seats_available || 10;
-    const change = Math.random() > 0.5 ? 1 : -1;
-    seatsAvailable = Math.max(0, Math.min(vehicle.capacity, seatsAvailable + change));
+    if (position.currentStop) {
+      const boarding = Math.floor(Math.random() * 8);
+      const alighting = Math.floor(Math.random() * 5);
+      seatsAvailable = Math.max(0, Math.min(vehicle.capacity, seatsAvailable - boarding + alighting));
+    }
 
-    // Random speed fluctuations
-    const speed = vehicle.speed_kmph + (Math.random() - 0.5) * 5;
+    // Speed with slight variation
+    const speed = position.speed + (Math.random() - 0.5) * 5;
 
     updates[`live-telemetry/${vehicle.vehicle_id}`] = {
       ...vehicle,
-      lat: newPosition.lat,
-      lon: newPosition.lon,
+      lat: position.lat,
+      lon: position.lng,
       heading: heading,
       speed_kmph: Math.max(5, Math.min(60, speed)),
+      road_type: position.roadType,
       seats_available: seatsAvailable,
       passengers: vehicle.capacity - seatsAvailable,
       occupancy_percent: Math.round(((vehicle.capacity - seatsAvailable) / vehicle.capacity) * 100),
       progress: newProgress,
+      waypoint_index: position.waypointIndex,
       timestamp: now,
       last_update: now,
-      current_stop_index: Math.floor(newProgress * route.stops.length),
-      current_stop: route.stops[Math.floor(newProgress * route.stops.length)]?.name || route.stops[0].name
+      current_stop_index: position.stopIndex || 0,
+      current_stop: position.currentStop || 'En Route',
+      next_stop: position.nextStop || 'Terminal',
+      predicted_delay_seconds: Math.round(position.delayMinutes * 60) + (vehicle.predicted_delay_seconds || 0) * 0.9
     };
   });
 
