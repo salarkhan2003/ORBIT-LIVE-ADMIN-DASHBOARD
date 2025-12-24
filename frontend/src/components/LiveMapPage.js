@@ -3,7 +3,7 @@
  * FIXED: Full-screen map with no grey tiles, proper overlays
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -14,15 +14,12 @@ import {
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { ref, onValue } from 'firebase/database';
-import { getRouteById, getRouteIds, REGION_CENTERS } from '../services/VijayawadaRoutes';
+import { getRouteById, getRouteIds } from '../services/VijayawadaRoutes';
 import './MapStyles.css';
-
-const OLA_MAPS_API_KEY = 'aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK';
+import OlaMapWrapper from './map/OlaMapWrapper';
 
 const LiveMapPage = () => {
   const navigate = useNavigate();
-  const mapContainerRef = useRef(null);
-  const mapInstanceRef = useRef(null);
   const vehicleMarkersRef = useRef({});
   const routePolylinesRef = useRef({});
   const resizeObserverRef = useRef(null);
@@ -40,160 +37,13 @@ const LiveMapPage = () => {
   const [stats, setStats] = useState({ total: 0, onTime: 0, delayed: 0, critical: 0 });
   const [availableRoutes, setAvailableRoutes] = useState(['all']);
 
-  const getDelayColor = (delay) => {
-    if ((delay || 0) <= 60) return '#10b981';
-    if ((delay || 0) <= 300) return '#f59e0b';
-    return '#ef4444';
-  };
 
-  // Initialize map - SINGLE INSTANCE with proper sizing
+  // --- Always call invalidateSize after layout/fullscreen change ---
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
-
-    const initMap = async () => {
-      try {
-        // Load Leaflet CSS
-        if (!document.querySelector('link[href*="leaflet.css"]')) {
-          const link = document.createElement('link');
-          link.rel = 'stylesheet';
-          link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-          document.head.appendChild(link);
-          await new Promise(r => setTimeout(r, 100));
-        }
-
-        // Load Leaflet JS
-        if (!window.L) {
-          await new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
-          });
-          await new Promise(r => setTimeout(r, 100));
-        }
-
-        // Create map with proper center
-        const center = REGION_CENTERS.vijayawada;
-        const map = window.L.map(mapContainerRef.current, {
-          center: [center.lat, center.lng],
-          zoom: center.zoom,
-          zoomControl: false,
-          attributionControl: true
-        });
-
-        // Add Ola Maps tiles with fallback
-        const olaTiles = window.L.tileLayer(
-          `https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=${OLA_MAPS_API_KEY}`,
-          { attribution: '© Ola Maps | APSRTC', maxZoom: 19 }
-        );
-
-        const osmTiles = window.L.tileLayer(
-          'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          { attribution: '© OpenStreetMap | APSRTC', maxZoom: 19 }
-        );
-
-        olaTiles.on('tileerror', () => {
-          map.removeLayer(olaTiles);
-          osmTiles.addTo(map);
-        });
-        olaTiles.addTo(map);
-
-        // Add zoom control
-        window.L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-        mapInstanceRef.current = map;
-        setMapLoaded(true);
-
-        // Force resize after mount
-        setTimeout(() => map.invalidateSize(), 100);
-        setTimeout(() => map.invalidateSize(), 500);
-
-      } catch (error) {
-        console.error('Map init error:', error);
-      }
-    };
-
-    initMap();
-
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-    };
-  }, []);
-
-  // Handle resize - CRITICAL for no grey tiles
-  useEffect(() => {
-    if (!mapInstanceRef.current) return;
-
-    const handleResize = () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize();
-      }
-    };
-
-    // Debounced resize handler
-    let resizeTimeout;
-    const debouncedResize = () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(handleResize, 100);
-    };
-
-    window.addEventListener('resize', debouncedResize);
-
-    // ResizeObserver for container changes
-    if (mapContainerRef.current && window.ResizeObserver) {
-      resizeObserverRef.current = new ResizeObserver(debouncedResize);
-      resizeObserverRef.current.observe(mapContainerRef.current);
+    if (mapLoaded) {
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
     }
-
-    return () => {
-      window.removeEventListener('resize', debouncedResize);
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
-      }
-      clearTimeout(resizeTimeout);
-    };
-  }, [mapLoaded]);
-
-  // Invalidate size on fullscreen toggle
-  useEffect(() => {
-    if (mapInstanceRef.current) {
-      setTimeout(() => mapInstanceRef.current.invalidateSize(), 100);
-    }
-  }, [isFullscreen]);
-
-  // Draw route polylines
-  const drawRoutePolylines = useCallback(() => {
-    if (!mapInstanceRef.current || !window.L || !showRouteLines) return;
-
-    // Clear existing
-    Object.values(routePolylinesRef.current).forEach(p => {
-      mapInstanceRef.current.removeLayer(p);
-    });
-    routePolylinesRef.current = {};
-
-    getRouteIds().forEach(routeId => {
-      const route = getRouteById(routeId);
-      if (!route?.waypoints) return;
-
-      const coords = route.waypoints.map(wp => [wp.lat, wp.lng]);
-      const polyline = window.L.polyline(coords, {
-        color: route.color || '#3b82f6',
-        weight: 4,
-        opacity: 0.6,
-        lineCap: 'round'
-      }).addTo(mapInstanceRef.current);
-
-      routePolylinesRef.current[routeId] = polyline;
-    });
-  }, [showRouteLines]);
-
-  useEffect(() => {
-    if (mapLoaded) drawRoutePolylines();
-  }, [mapLoaded, showRouteLines, drawRoutePolylines]);
+  }, [isFullscreen, mapLoaded]);
 
   // Firebase subscription
   useEffect(() => {
@@ -239,9 +89,7 @@ const LiveMapPage = () => {
 
   // Update vehicle markers
   useEffect(() => {
-    if (!mapInstanceRef.current || !mapLoaded || !window.L) return;
-
-    const map = mapInstanceRef.current;
+    if (!mapLoaded) return;
 
     // Filter vehicles
     let filtered = vehicles;
@@ -252,76 +100,54 @@ const LiveMapPage = () => {
       filtered = filtered.filter(v => (v.predicted_delay_seconds || 0) > 300);
     }
 
-    // Remove old markers
-    Object.keys(vehicleMarkersRef.current).forEach(id => {
-      if (!filtered.find(v => v.vehicle_id === id)) {
-        map.removeLayer(vehicleMarkersRef.current[id]);
-        delete vehicleMarkersRef.current[id];
-      }
-    });
-
-    // Add/update markers
-    filtered.forEach(vehicle => {
-      const id = vehicle.vehicle_id;
-      const color = getDelayColor(vehicle.predicted_delay_seconds || 0);
-      const heading = vehicle.heading || 0;
-
-      const icon = window.L.divIcon({
-        className: 'bus-marker',
-        html: `
-          <div style="position:relative;">
-            <div style="
-              width:34px;height:34px;
-              background:${color};
-              border:3px solid white;
-              border-radius:50%;
-              box-shadow:0 3px 10px rgba(0,0,0,0.3);
-              display:flex;align-items:center;justify-content:center;
-              transform:rotate(${heading}deg);
-            ">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-                <path d="M4 16V6a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z"/>
-              </svg>
-            </div>
-            <div style="
-              position:absolute;top:-14px;left:50%;transform:translateX(-50%);
-              background:#1e40af;color:white;font-size:9px;font-weight:bold;
-              padding:2px 6px;border-radius:4px;white-space:nowrap;
-            ">${vehicle.route_id || 'N/A'}</div>
-          </div>
-        `,
-        iconSize: [34, 44],
-        iconAnchor: [17, 22]
-      });
-
-      if (vehicleMarkersRef.current[id]) {
-        vehicleMarkersRef.current[id].setLatLng([vehicle.lat, vehicle.lon]);
-        vehicleMarkersRef.current[id].setIcon(icon);
-      } else {
-        const marker = window.L.marker([vehicle.lat, vehicle.lon], { icon })
-          .bindPopup(`
-            <div style="min-width:180px;font-family:system-ui;">
-              <div style="background:${color};color:white;padding:8px;margin:-13px -20px 8px;font-weight:bold;">
-                ${vehicle.vehicle_id}
-              </div>
-              <p style="margin:4px 0;font-size:12px;"><b>Route:</b> ${vehicle.route_id || 'N/A'}</p>
-              <p style="margin:4px 0;font-size:12px;"><b>Speed:</b> ${(vehicle.speed_kmph || 0).toFixed(1)} km/h</p>
-              <p style="margin:4px 0;font-size:12px;"><b>Occupancy:</b> ${vehicle.occupancy_percent || 0}%</p>
-              <p style="margin:4px 0;font-size:12px;"><b>Delay:</b> +${Math.floor((vehicle.predicted_delay_seconds || 0) / 60)} min</p>
-            </div>
-          `)
-          .addTo(map);
-        marker.on('click', () => setSelectedVehicle(vehicle));
-        vehicleMarkersRef.current[id] = marker;
-      }
-    });
+    // Update markers in OlaMapWrapper
+    if (window.updateOlaMapMarkers) {
+      window.updateOlaMapMarkers(filtered);
+    }
   }, [vehicles, routeFilter, showDelayedOnly, mapLoaded]);
+
+  // Update route polylines
+  useEffect(() => {
+    if (!mapLoaded) return;
+
+    const routes = getRouteIds().map(routeId => {
+      const route = getRouteById(routeId);
+      return route && route.waypoints ? {
+        route_id: routeId,
+        polyline: route.waypoints.map(wp => ({ lat: wp.lat, lng: wp.lng })),
+        color: route.color || '#3b82f6'
+      } : null;
+    }).filter(Boolean);
+
+    // Update polylines in OlaMapWrapper
+    if (window.updateOlaMapPolylines) {
+      window.updateOlaMapPolylines(routes);
+    }
+  }, [mapLoaded, vehicles]);
 
   const toggleFullscreen = () => setIsFullscreen(!isFullscreen);
   const handleRefresh = () => {
     setLastUpdate(new Date());
-    if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize();
+    if (mapLoaded) {
+      window.dispatchEvent(new Event('resize'));
+    }
   };
+
+  // Example busMarkers and routeLines construction
+  const busMarkers = vehicles.map(bus => ({
+    id: bus.vehicle_id,
+    lat: bus.lat,
+    lng: bus.lon,
+    iconUrl: undefined, // or provide a custom icon if needed
+    title: bus.route_id,
+    zIndex: 2
+  }));
+  const routeLines = vehicles.map(vehicle => ({
+    id: vehicle.route_id,
+    path: vehicle.polyline, // array of {lat, lng}
+    color: vehicle.color || '#3b82f6',
+    weight: 4
+  }));
 
   return (
     <div className={`flex flex-col h-screen bg-gray-100 ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
@@ -392,10 +218,11 @@ const LiveMapPage = () => {
       {/* Map Container - FLEX-1 fills remaining space */}
       <div className="flex-1 relative min-h-0">
         <div className="map-wrapper absolute inset-0">
-          <div
-            ref={mapContainerRef}
-            className="map-container"
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          <OlaMapWrapper
+            center={{ lat: 16.506, lng: 80.648 }}
+            zoom={12}
+            markers={busMarkers}
+            polylines={routeLines}
           />
 
           {/* Loading State */}
@@ -445,9 +272,9 @@ const LiveMapPage = () => {
                 </div>
                 <Button className="w-full mt-3" size="sm" onClick={() => {
                   const route = getRouteById(selectedVehicle.route_id);
-                  if (route && mapInstanceRef.current) {
+                  if (route && window.L) {
                     const bounds = route.waypoints.map(wp => [wp.lat, wp.lng]);
-                    mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
+                    window.L.map('map').fitBounds(bounds, { padding: [50, 50] });
                   }
                 }}>
                   <Route className="w-4 h-4 mr-2" />Show Route

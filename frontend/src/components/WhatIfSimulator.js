@@ -28,21 +28,18 @@ import {
   RotateCcw,
   Activity,
   Gauge,
-  Route,
-  Shield,
-  Eye,
-  EyeOff,
-  TrendingUp,
-  TrendingDown,
-  MapPin,
-  Thermometer,
   Brain,
   Target,
-  Settings,
   BarChart3,
   PieChart as PieChartIcon,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Thermometer,
+  Eye,
+  EyeOff,
+  TrendingUp,
+  MapPin,
+  Shield
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { ref, set } from 'firebase/database';
@@ -51,7 +48,6 @@ import {
   Area,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   PieChart,
@@ -60,6 +56,7 @@ import {
   BarChart,
   Bar
 } from 'recharts';
+import OlaMapWrapper from './map/OlaMapWrapper';
 
 // Routes with realistic Vijayawada data
 const ROUTES = {
@@ -81,17 +78,11 @@ const DELAY_HOTSPOTS = [
 const VIJAYAWADA_CENTER = { lat: 16.5062, lng: 80.6480 };
 
 const WhatIfSimulator = () => {
-  const mapRef = useRef(null);
-  const mapInstance = useRef(null);
-  const markersRef = useRef({});
-  const hotspotsRef = useRef([]);
-  const routeLinesRef = useRef([]);
   const animationRef = useRef(null);
 
   // Core state
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationSpeed, setSimulationSpeed] = useState(1);
-  const [mapLoaded, setMapLoaded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeTab, setActiveTab] = useState('simulation');
 
@@ -99,13 +90,8 @@ const WhatIfSimulator = () => {
   const [busCount, setBusCount] = useState(50);
   const [buses, setBuses] = useState([]);
 
-  // Display toggles
-  const [showHeatmap, setShowHeatmap] = useState(true);
-  const [showRoutes, setShowRoutes] = useState(true);
-
   // Filters
   const [selectedRoute, setSelectedRoute] = useState('all');
-  const [occupancyFilter, setOccupancyFilter] = useState(0);
   const [showEmergencyOnly, setShowEmergencyOnly] = useState(false);
 
   // Scenario
@@ -134,6 +120,9 @@ const WhatIfSimulator = () => {
 
   // Activity log
   const [activityLog, setActivityLog] = useState([]);
+
+  // Heatmap toggle
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
   // Generate buses
   const generateBuses = useCallback((count, scenarioType = 'normal') => {
@@ -201,65 +190,15 @@ const WhatIfSimulator = () => {
 
   // Initialize map
   useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
+    // Initialize
+    const initialBuses = generateBuses(busCount, scenario);
+    setBuses(initialBuses);
+    setDemandForecast(generateDemandForecast());
+    updateStats(initialBuses);
+    // drawMarkers(initialBuses, map);
+    // drawHotspots(map);
 
-    const initMap = async () => {
-      if (!document.querySelector('link[href*="leaflet.css"]')) {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-      }
-
-      if (!window.L) {
-        await new Promise((resolve) => {
-          const script = document.createElement('script');
-          script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-          script.onload = resolve;
-          document.head.appendChild(script);
-        });
-      }
-
-      await new Promise(r => setTimeout(r, 100));
-
-      const map = window.L.map(mapRef.current, {
-        center: [VIJAYAWADA_CENTER.lat, VIJAYAWADA_CENTER.lng],
-        zoom: 12,
-        zoomControl: false
-      });
-
-      window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
-        attribution: '© Ola Maps | APSRTC',
-        maxZoom: 19
-      }).addTo(map);
-
-      window.L.control.zoom({ position: 'topright' }).addTo(map);
-      map.attributionControl.setPrefix('');
-
-      mapInstance.current = map;
-      setMapLoaded(true);
-      setTimeout(() => map.invalidateSize(), 100);
-
-      // Initialize
-      const initialBuses = generateBuses(busCount, scenario);
-      setBuses(initialBuses);
-      setDemandForecast(generateDemandForecast());
-      updateStats(initialBuses);
-      drawMarkers(initialBuses, map);
-      drawHotspots(map);
-
-      addLog('🚀 Simulator initialized with ' + busCount + ' buses');
-    };
-
-    initMap();
-
-    return () => {
-      if (animationRef.current) clearTimeout(animationRef.current);
-      if (mapInstance.current) {
-        mapInstance.current.remove();
-        mapInstance.current = null;
-      }
-    };
+    addLog('🚀 Simulator initialized with ' + busCount + ' buses');
   }, []);
 
   // Update stats
@@ -301,97 +240,9 @@ const WhatIfSimulator = () => {
     });
   }, []);
 
-  // Draw markers
-  const drawMarkers = useCallback((busData, map) => {
-    if (!map || !window.L) return;
-
-    Object.values(markersRef.current).forEach(m => map.removeLayer(m));
-    markersRef.current = {};
-
-    let filtered = busData;
-    if (selectedRoute !== 'all') filtered = filtered.filter(b => b.route_id === selectedRoute);
-    if (showEmergencyOnly) filtered = filtered.filter(b => b.status === 'emergency');
-    if (occupancyFilter > 0) filtered = filtered.filter(b => b.occupancy_percent >= occupancyFilter);
-
-    filtered.forEach(bus => {
-      const color = bus.status === 'emergency' ? '#ef4444' :
-                    bus.status === 'delayed' ? '#f59e0b' :
-                    bus.occupancy_percent > 85 ? '#ef4444' :
-                    bus.occupancy_percent > 60 ? '#f59e0b' : '#10b981';
-
-      const icon = window.L.divIcon({
-        className: 'sim-bus-marker',
-        html: `
-          <div style="position: relative;">
-            <div style="
-              width: 30px; height: 30px;
-              background: ${color};
-              border: 2px solid white;
-              border-radius: 50%;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-              display: flex; align-items: center; justify-content: center;
-              transform: rotate(${bus.heading}deg);
-              ${bus.status === 'emergency' ? 'animation: pulse 1s infinite;' : ''}
-            ">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
-                <path d="M4 16V6a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z"/>
-              </svg>
-            </div>
-            <div style="position: absolute; top: -8px; right: -10px; background: ${ROUTES[bus.route_id]?.color || '#1e40af'}; color: white; font-size: 7px; font-weight: bold; padding: 1px 3px; border-radius: 2px;">${bus.route_id}</div>
-            ${bus.occupancy_percent > 90 ? '<div style="position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%); font-size: 8px;">🔥</div>' : ''}
-          </div>
-        `,
-        iconSize: [30, 38],
-        iconAnchor: [15, 19]
-      });
-
-      const marker = window.L.marker([bus.lat, bus.lng || bus.lon], { icon })
-        .bindPopup(`
-          <div style="min-width: 180px; font-family: system-ui; font-size: 12px;">
-            <div style="background: ${color}; color: white; padding: 8px; margin: -8px -20px 8px; font-weight: bold;">
-              ${bus.id} <span style="float: right;">${bus.route_id}</span>
-            </div>
-            <p><b>Status:</b> <span style="color: ${color};">${bus.status.toUpperCase()}</span></p>
-            <p><b>Occupancy:</b> ${bus.passengers}/${bus.capacity} (${bus.occupancy_percent}%)</p>
-            <p><b>Speed:</b> ${bus.speed.toFixed(1)} km/h</p>
-            <p><b>Delay:</b> +${bus.delay_minutes} min</p>
-            <p><b>Driver:</b> ${bus.driver_name}</p>
-          </div>
-        `)
-        .addTo(map);
-
-      markersRef.current[bus.id] = marker;
-    });
-  }, [selectedRoute, showEmergencyOnly, occupancyFilter]);
-
-  // Draw hotspots
-  const drawHotspots = useCallback((map) => {
-    if (!map || !window.L) return;
-
-    hotspotsRef.current.forEach(h => map.removeLayer(h));
-    hotspotsRef.current = [];
-
-    if (!showHeatmap) return;
-
-    DELAY_HOTSPOTS.forEach(hotspot => {
-      const color = hotspot.severity === 'high' ? '#ef4444' :
-                    hotspot.severity === 'medium' ? '#f59e0b' : '#10b981';
-
-      const circle = window.L.circle([hotspot.lat, hotspot.lng], {
-        radius: 150 + hotspot.delay * 20,
-        color,
-        fillColor: color,
-        fillOpacity: 0.25,
-        weight: 2
-      }).bindPopup(`<b>${hotspot.name}</b><br>Avg Delay: +${hotspot.delay} min`).addTo(map);
-
-      hotspotsRef.current.push(circle);
-    });
-  }, [showHeatmap]);
-
   // Animation loop
   useEffect(() => {
-    if (!isSimulating || !mapInstance.current) return;
+    if (!isSimulating) return;
 
     const animate = () => {
       setBuses(prev => {
@@ -423,8 +274,7 @@ const WhatIfSimulator = () => {
           };
         });
 
-        if (mapInstance.current) drawMarkers(updated, mapInstance.current);
-        updateStats(updated);
+        // updateStats(updated);
         return updated;
       });
 
@@ -433,12 +283,12 @@ const WhatIfSimulator = () => {
 
     animate();
     return () => { if (animationRef.current) clearTimeout(animationRef.current); };
-  }, [isSimulating, simulationSpeed, drawMarkers, updateStats]);
+  }, [isSimulating, simulationSpeed]);
 
   // Update hotspots when toggle changes
   useEffect(() => {
-    if (mapInstance.current) drawHotspots(mapInstance.current);
-  }, [showHeatmap, drawHotspots]);
+    // if (mapInstance.current) drawHotspots(mapInstance.current);
+  }, [showHeatmap]);
 
   // Update bus count
   const updateBusCount = (count) => {
@@ -447,7 +297,7 @@ const WhatIfSimulator = () => {
     const newBuses = generateBuses(newCount, scenario);
     setBuses(newBuses);
     updateStats(newBuses);
-    if (mapInstance.current) drawMarkers(newBuses, mapInstance.current);
+    // if (mapInstance.current) drawMarkers(newBuses, mapInstance.current);
     addLog(`📊 Fleet size: ${newCount} buses`);
   };
 
@@ -457,7 +307,7 @@ const WhatIfSimulator = () => {
     const newBuses = generateBuses(busCount, newScenario);
     setBuses(newBuses);
     updateStats(newBuses);
-    if (mapInstance.current) drawMarkers(newBuses, mapInstance.current);
+    // if (mapInstance.current) drawMarkers(newBuses, mapInstance.current);
     addLog(`🎭 Scenario: ${newScenario.toUpperCase()}`);
   };
 
@@ -514,7 +364,7 @@ const WhatIfSimulator = () => {
     const newBuses = generateBuses(busCount, scenario);
     setBuses(newBuses);
     updateStats(newBuses);
-    if (mapInstance.current) drawMarkers(newBuses, mapInstance.current);
+    // if (mapInstance.current) drawMarkers(newBuses, mapInstance.current);
     addLog('🔄 Simulation reset');
   };
 
@@ -545,6 +395,22 @@ const WhatIfSimulator = () => {
     route: id,
     buses: buses.filter(b => b.route_id === id).length,
     color: route.color
+  }));
+
+  // Example busMarkers and routeLines construction
+  const busMarkers = buses.map(bus => ({
+    id: bus.vehicle_id,
+    lat: bus.lat,
+    lng: bus.lon,
+    iconUrl: undefined, // or provide a custom icon if needed
+    title: bus.route_id,
+    zIndex: 2
+  }));
+  const routeLines = Object.values(ROUTES).map(route => ({
+    id: route.route_id,
+    path: route.polyline, // array of {lat, lng}
+    color: route.color || '#3b82f6',
+    weight: 4
   }));
 
   return (
@@ -600,7 +466,12 @@ const WhatIfSimulator = () => {
       <div className="flex-1 flex overflow-hidden">
         {/* Map */}
         <div className="w-[58%] relative" style={{ minHeight: '400px' }}>
-          <div ref={mapRef} className="absolute inset-0" style={{ width: '100%', height: '100%' }} />
+          <OlaMapWrapper
+            center={{ lat: 16.506, lng: 80.648 }}
+            zoom={12}
+            markers={busMarkers}
+            polylines={routeLines}
+          />
 
           {/* Map Controls */}
           <div className="absolute top-3 left-3 z-[1000] space-y-2">
@@ -657,7 +528,7 @@ const WhatIfSimulator = () => {
               <CardContent className="p-3 space-y-2">
                 <div>
                   <Label className="text-xs font-semibold">Route</Label>
-                  <select value={selectedRoute} onChange={e => { setSelectedRoute(e.target.value); if(mapInstance.current) drawMarkers(buses, mapInstance.current); }} className="w-full text-xs border rounded px-2 py-1.5 mt-1">
+                  <select value={selectedRoute} onChange={e => { setSelectedRoute(e.target.value); }} className="w-full text-xs border rounded px-2 py-1.5 mt-1">
                     <option value="all">All Routes</option>
                     {Object.entries(ROUTES).map(([id, r]) => <option key={id} value={id}>{id}</option>)}
                   </select>
@@ -669,7 +540,7 @@ const WhatIfSimulator = () => {
                   </Button>
                 </div>
                 <div className="flex items-center gap-2">
-                  <input type="checkbox" checked={showEmergencyOnly} onChange={e => { setShowEmergencyOnly(e.target.checked); if(mapInstance.current) drawMarkers(buses, mapInstance.current); }} className="rounded" />
+                  <input type="checkbox" checked={showEmergencyOnly} onChange={e => { setShowEmergencyOnly(e.target.checked); }} className="rounded" />
                   <Label className="text-xs">Emergency Only</Label>
                 </div>
               </CardContent>

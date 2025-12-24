@@ -49,20 +49,12 @@ import {
   getRoutePolyline
 } from '../services/DataSimulationService';
 import {
-  drawRoutePolylines,
-  drawRouteStops,
-  highlightRoute,
-  clearRoutePolylines
-} from './RoutePolylines';
-import {
   LineChart,
   Line,
   ResponsiveContainer,
   Tooltip
 } from 'recharts';
-
-// Ola Maps Configuration
-const OLA_MAPS_API_KEY = 'aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK';
+import OlaMapWrapper from './map/OlaMapWrapper';
 
 // Andhra Pradesh center coordinates (Guntur/Vijayawada region)
 const AP_CENTER = { lat: 16.3067, lng: 80.4365 };
@@ -89,6 +81,16 @@ const DEPOTS = [
   { id: 'DEPOT-TNL', name: 'Tenali Depot', lat: 16.2432, lon: 80.6400 },
   { id: 'DEPOT-MGL', name: 'Mangalagiri Depot', lat: 16.4307, lon: 80.5686 }
 ];
+
+// Simple Legend component for bus status
+const Legend = () => (
+  <div className="flex gap-4 bg-white/90 rounded-lg px-3 py-2 shadow text-xs">
+    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" />Active</span>
+    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block" />Delayed</span>
+    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" />Emergency</span>
+    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-gray-400 inline-block" />Inactive</span>
+  </div>
+);
 
 const OperationsMap = ({ fullScreen = false }) => {
   const mapContainerRef = useRef(null);
@@ -120,6 +122,29 @@ const OperationsMap = ({ fullScreen = false }) => {
 
   // Available routes (dynamically populated)
   const [availableRoutes, setAvailableRoutes] = useState(['all']);
+
+  // Stats
+  const [stats, setStats] = useState({
+    total: 0,
+    active: 0,
+    inactive: 0,
+    anomaly: 0,
+    emergency: 0,
+    avgDelay: 0,
+    onTimePercent: 0,
+    peakRoute: 'N/A',
+    peakOccupancy: 0
+  });
+
+  // Message state for driver communication
+  const [messageText, setMessageText] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+
+  // GPS history for selected vehicle
+  const [gpsHistory, setGpsHistory] = useState([]);
+
+  // New route for reassignment
+  const [newRoute, setNewRoute] = useState('');
 
   // Draw route polylines on map
   const drawRoutePolylinesOnMap = useCallback(() => {
@@ -183,28 +208,6 @@ const OperationsMap = ({ fullScreen = false }) => {
     // Fit map to route
     mapInstanceRef.current.fitBounds(selectedRouteRef.current.getBounds(), { padding: [50, 50] });
   }, []);
-  // Stats
-  const [stats, setStats] = useState({
-    total: 0,
-    active: 0,
-    inactive: 0,
-    anomaly: 0,
-    emergency: 0,
-    avgDelay: 0,
-    onTimePercent: 0,
-    peakRoute: 'N/A',
-    peakOccupancy: 0
-  });
-
-  // Message state for driver communication
-  const [messageText, setMessageText] = useState('');
-  const [sendingMessage, setSendingMessage] = useState(false);
-
-  // GPS history for selected vehicle
-  const [gpsHistory, setGpsHistory] = useState([]);
-
-  // New route for reassignment
-  const [newRoute, setNewRoute] = useState('');
 
   // Load Leaflet with Ola Maps tiles
   useEffect(() => {
@@ -212,28 +215,6 @@ const OperationsMap = ({ fullScreen = false }) => {
 
     const initMap = async () => {
       try {
-        // Load Leaflet CSS
-        if (!document.querySelector('link[href*="leaflet"]')) {
-          const link = document.createElement('link');
-          link.rel = 'stylesheet';
-          link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-          document.head.appendChild(link);
-        }
-
-        // Load Leaflet JS
-        if (!window.L) {
-          await new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
-          });
-        }
-
-        // Wait for Leaflet to be ready
-        await new Promise(resolve => setTimeout(resolve, 100));
-
         // Initialize map
         const map = window.L.map(mapContainerRef.current, {
           center: [AP_CENTER.lat, AP_CENTER.lng],
@@ -763,475 +744,43 @@ const OperationsMap = ({ fullScreen = false }) => {
     }
   };
 
+  // Bus markers and route lines for OlaMapWrapper
+  const busMarkers = vehicles.map(bus => ({
+    id: bus.vehicle_id,
+    lat: bus.lat,
+    lng: bus.lon,
+    iconUrl: undefined, // or provide a custom icon if needed
+    title: bus.route_id,
+    zIndex: 2
+  }));
+  const routeLines = vehicles.map(vehicle => ({
+    id: vehicle.route_id,
+    path: vehicle.polyline, // array of {lat, lng}
+    color: vehicle.color || '#3b82f6',
+    weight: 4
+  }));
+
+  const handleBusClick = useCallback((bus) => {
+    setSelectedVehicle(bus);
+    setShowSidePanel(true);
+  }, []);
+
   return (
-    <div className={`relative ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : 'h-full'}`}>
-      {/* Sticky Header Section */}
-      <div className="sticky top-0 z-40 bg-background pb-2">
-        {/* KPI Cards Row */}
-        <div className="grid grid-cols-5 gap-3 mb-3">
-          <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-lg">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-blue-100 text-xs uppercase tracking-wide">Live Buses</p>
-                  <p className="text-2xl font-bold">{stats.active}</p>
-                </div>
-                <Bus className="w-8 h-8 text-blue-200" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0 shadow-lg">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-amber-100 text-xs uppercase tracking-wide">Avg Delay</p>
-                  <p className="text-2xl font-bold">+{stats.avgDelay}<span className="text-sm">min</span></p>
-                </div>
-                <Clock className="w-8 h-8 text-amber-200" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-0 shadow-lg">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-emerald-100 text-xs uppercase tracking-wide">On-Time</p>
-                  <p className="text-2xl font-bold">{stats.onTimePercent}<span className="text-sm">%</span></p>
-                </div>
-                <CheckCircle2 className="w-8 h-8 text-emerald-200" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-orange-500 to-red-500 text-white border-0 shadow-lg">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-orange-100 text-xs uppercase tracking-wide">Peak Load</p>
-                  <p className="text-lg font-bold">{stats.peakRoute} ({stats.peakOccupancy}%)</p>
-                </div>
-                <TrendingUp className="w-8 h-8 text-orange-200" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className={`bg-gradient-to-br ${stats.emergency > 0 ? 'from-red-500 to-red-600 animate-pulse' : 'from-slate-500 to-slate-600'} text-white border-0 shadow-lg`}>
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-red-100 text-xs uppercase tracking-wide">Emergencies</p>
-                  <p className="text-2xl font-bold">{stats.emergency}</p>
-                </div>
-                <AlertTriangle className="w-8 h-8 text-red-200" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filter Bar */}
-        <Card className="border-0 shadow-lg bg-gradient-to-r from-slate-900 to-slate-800">
-          <CardContent className="p-2">
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Route Filter */}
-              <div className="flex items-center gap-1">
-                <Label className="text-xs font-medium text-white">Route:</Label>
-                <select
-                  value={routeFilter}
-                  onChange={(e) => setRouteFilter(e.target.value)}
-                  className="text-xs border border-slate-600 rounded px-2 py-1 bg-slate-700 text-white min-w-[100px]"
-                >
-                  {availableRoutes.map(route => (
-                    <option key={route} value={route}>
-                      {route === 'all' ? 'All Routes' : route}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Depot Filter */}
-              <div className="flex items-center gap-1">
-                <Label className="text-xs font-medium text-white">Depot:</Label>
-                <select
-                  value={depotFilter}
-                  onChange={(e) => setDepotFilter(e.target.value)}
-                  className="text-xs border border-slate-600 rounded px-2 py-1 bg-slate-700 text-white min-w-[100px]"
-                >
-                  <option value="all">All Depots</option>
-                  {DEPOTS.map(depot => (
-                    <option key={depot.id} value={depot.id}>{depot.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Occupancy Filter */}
-              <div className="flex items-center gap-1">
-                <Label className="text-xs font-medium text-white">Occupancy:</Label>
-                <select
-                  value={occupancyFilter}
-                  onChange={(e) => setOccupancyFilter(e.target.value)}
-                  className="text-xs border border-slate-600 rounded px-2 py-1 bg-slate-700 text-white min-w-[80px]"
-                >
-                  <option value="all">All</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </div>
-
-              <Separator orientation="vertical" className="h-5 bg-slate-600" />
-
-              {/* Quick Filters */}
-              <Button
-                variant={showAnomaliesOnly ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setShowAnomaliesOnly(!showAnomaliesOnly)}
-                className={`gap-1 h-7 text-xs ${showAnomaliesOnly ? 'bg-amber-500 hover:bg-amber-600' : 'border-slate-600 text-white hover:bg-slate-700'}`}
-              >
-                <AlertTriangle className="w-3 h-3" />
-                GPS Issue ({stats.anomaly})
-              </Button>
-
-              <Button
-                variant={showAlertsOnly ? 'destructive' : 'outline'}
-                size="sm"
-                onClick={() => setShowAlertsOnly(!showAlertsOnly)}
-                className={`gap-1 h-7 text-xs ${!showAlertsOnly && 'border-slate-600 text-white hover:bg-slate-700'}`}
-              >
-                <Radio className="w-3 h-3" />
-                Emergency ({stats.emergency})
-              </Button>
-
-              <div className="flex-1" />
-
-              {/* Stats */}
-              <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/50 text-xs">
-                <Activity className="w-3 h-3 mr-1" />
-                {stats.active} Active
-              </Badge>
-
-              {/* Map Controls */}
-              <Button variant="outline" size="sm" onClick={centerOnAP} className="h-7 w-7 p-0 border-slate-600 text-white hover:bg-slate-700">
-                <Locate className="w-3 h-3" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing} className="h-7 w-7 p-0 border-slate-600 text-white hover:bg-slate-700">
-                <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-              </Button>
-              <Button variant="outline" size="sm" onClick={toggleFullscreen} className="h-7 w-7 p-0 border-slate-600 text-white hover:bg-slate-700">
-                {isFullscreen ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+    <div className="relative w-full h-[calc(100vh-64px)] overflow-hidden">
+      <OlaMapWrapper
+        center={{ lat: 16.506, lng: 80.648 }}
+        zoom={12}
+        markers={busMarkers}
+        polylines={routeLines}
+        onBusClick={handleBusClick}
+      />
+      {/* overlays, legends, controls */}
+      <div className="absolute bottom-4 left-4 z-20">
+        <Legend />
       </div>
-
-      {/* Map Container */}
-      <div className={`relative ${isFullscreen ? 'h-[calc(100vh-80px)]' : 'h-[600px]'} rounded-xl overflow-hidden shadow-2xl`}>
-        <div
-          ref={mapContainerRef}
-          className="w-full h-full"
-          style={{ background: '#e5e7eb' }}
-        >
-          {!mapLoaded && !mapError && (
-            <div className="flex items-center justify-center h-full bg-gradient-to-br from-slate-100 to-slate-200">
-              <div className="text-center">
-                <div className="relative">
-                  <div className="w-16 h-16 border-4 border-blue-500/30 rounded-full animate-spin border-t-blue-500"></div>
-                  <MapPin className="w-6 h-6 text-blue-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-                </div>
-                <p className="text-sm text-slate-500 mt-4 font-medium">Loading Ola Maps...</p>
-              </div>
-            </div>
-          )}
-          {mapError && (
-            <div className="flex items-center justify-center h-full bg-red-50">
-              <div className="text-center">
-                <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-2" />
-                <p className="text-sm text-red-600">{mapError}</p>
-                <Button variant="outline" size="sm" className="mt-2" onClick={() => window.location.reload()}>
-                  Retry
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Map Legend */}
-        <div className="absolute bottom-4 left-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm rounded-xl p-4 shadow-xl border border-slate-200 dark:border-slate-700 z-[1000]">
-          <h4 className="text-sm font-bold mb-3 text-slate-800 dark:text-white">Live Status</h4>
-          <div className="space-y-2">
-            <div className="flex items-center space-x-3 text-xs">
-              <div className="w-4 h-4 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/30"></div>
-              <span className="text-slate-600 dark:text-slate-300">Active</span>
-            </div>
-            <div className="flex items-center space-x-3 text-xs">
-              <div className="w-4 h-4 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-500/30"></div>
-              <span className="text-slate-600 dark:text-slate-300">No GPS &gt; 5min</span>
-            </div>
-            <div className="flex items-center space-x-3 text-xs">
-              <div className="w-4 h-4 rounded-full bg-gradient-to-br from-red-400 to-red-600 shadow-lg shadow-red-500/30 animate-pulse"></div>
-              <span className="text-slate-600 dark:text-slate-300">Emergency</span>
-            </div>
-            <div className="flex items-center space-x-3 text-xs">
-              <div className="w-4 h-4 rounded-full bg-gradient-to-br from-slate-400 to-slate-600"></div>
-              <span className="text-slate-600 dark:text-slate-300">Inactive</span>
-            </div>
-            <div className="flex items-center space-x-3 text-xs pt-2 mt-2 border-t border-slate-200 dark:border-slate-600">
-              <div className="w-4 h-4 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 shadow-lg shadow-blue-500/30"></div>
-              <span className="text-slate-600 dark:text-slate-300">Bus Stop</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Ola Maps Attribution */}
-        <div className="absolute bottom-4 right-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm px-3 py-2 rounded-lg text-xs text-slate-600 dark:text-slate-300 z-[1000] flex items-center gap-2 shadow-lg border border-slate-200 dark:border-slate-700">
-          <div className="w-5 h-5 bg-gradient-to-r from-green-500 to-green-600 rounded flex items-center justify-center">
-            <span className="text-white font-bold text-[10px]">O</span>
-          </div>
-          Powered by <strong className="text-green-600">Ola Maps</strong>
-        </div>
-
-        {/* Side Panel for Selected Vehicle */}
-        {showSidePanel && selectedVehicle && (
-          <div className="absolute top-0 right-0 w-[420px] h-full bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-700 z-[1001] overflow-hidden">
-            <ScrollArea className="h-full">
-              <div className="p-5">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800 dark:text-white">
-                      <Bus className="w-6 h-6 text-blue-500" />
-                      {selectedVehicle.vehicle_id}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge className="bg-blue-500/20 text-blue-600 border-blue-500/50">
-                        {selectedVehicle.route_id}
-                      </Badge>
-                      <Badge
-                        variant={selectedVehicle.hasEmergency ? 'destructive' : selectedVehicle.isActive ? 'default' : 'secondary'}
-                      >
-                        {selectedVehicle.hasEmergency ? '🚨 EMERGENCY' : selectedVehicle.isActive ? '✅ Active' : '⏸️ Inactive'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => setShowSidePanel(false)} className="hover:bg-slate-100 dark:hover:bg-slate-800">
-                    <X className="w-5 h-5" />
-                  </Button>
-                </div>
-
-                <Separator className="my-4" />
-
-                {/* AI ETA Prediction Card */}
-                <div className="bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl p-4 text-white mb-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Zap className="w-5 h-5" />
-                    <span className="font-semibold">AI ETA Prediction</span>
-                  </div>
-                  <div className="text-2xl font-bold">
-                    Arriving {selectedVehicle.next_stop || 'Next Stop'}: {calculateAIETA(selectedVehicle)}
-                  </div>
-                  <div className="text-purple-200 text-sm mt-1">
-                    ±2 min | Confidence: 94%
-                  </div>
-                </div>
-
-                {/* Trip Details */}
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-sm text-slate-500 dark:text-slate-400 uppercase tracking-wide">Trip Details</h4>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg">
-                      <div className="text-slate-500 dark:text-slate-400 text-xs">Route</div>
-                      <div className="font-bold text-slate-800 dark:text-white">{selectedVehicle.route_id || 'N/A'}</div>
-                    </div>
-                    <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg">
-                      <div className="text-slate-500 dark:text-slate-400 text-xs">Speed</div>
-                      <div className="font-bold text-slate-800 dark:text-white">{(selectedVehicle.speed_kmph || 0).toFixed(1)} km/h</div>
-                    </div>
-                    <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg">
-                      <div className="text-slate-500 dark:text-slate-400 text-xs">Driver</div>
-                      <div className="font-bold text-slate-800 dark:text-white">{selectedVehicle.driver_name || 'N/A'}</div>
-                    </div>
-                    <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg">
-                      <div className="text-slate-500 dark:text-slate-400 text-xs">Conductor</div>
-                      <div className="font-bold text-slate-800 dark:text-white">{selectedVehicle.conductor_name || 'N/A'}</div>
-                    </div>
-                    <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg col-span-2">
-                      <div className="text-slate-500 dark:text-slate-400 text-xs">Current Stop</div>
-                      <div className="font-bold text-slate-800 dark:text-white">{selectedVehicle.current_stop || 'En Route'}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <Separator className="my-4" />
-
-                {/* Occupancy with Progress */}
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-sm text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    Occupancy ({selectedVehicle.occupancyPercent || 0}%)
-                  </h4>
-                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-2xl font-bold text-slate-800 dark:text-white">
-                        {selectedVehicle.passengers || (selectedVehicle.capacity || 50) - (selectedVehicle.seats_available || 25)}
-                      </span>
-                      <span className="text-slate-500 dark:text-slate-400">/ {selectedVehicle.capacity || 50} seats</span>
-                    </div>
-                    <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full transition-all rounded-full ${
-                          (selectedVehicle.occupancyPercent || 0) > 80 
-                            ? 'bg-gradient-to-r from-red-500 to-red-600' 
-                            : (selectedVehicle.occupancyPercent || 0) > 50 
-                              ? 'bg-gradient-to-r from-amber-500 to-amber-600'
-                              : 'bg-gradient-to-r from-emerald-500 to-emerald-600'
-                        }`}
-                        style={{ width: `${selectedVehicle.occupancyPercent || 50}%` }}
-                      />
-                    </div>
-                    <div className="mt-3 text-xs text-slate-500">
-                      Seats Available: <span className="font-bold text-emerald-600">{selectedVehicle.seats_available || 25}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <Separator className="my-4" />
-
-                {/* Seat Timeline Sparkline */}
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-sm text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                    Seat Availability Timeline
-                  </h4>
-                  <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg h-20">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={generateSeatHistory()}>
-                        <Line
-                          type="monotone"
-                          dataKey="seats"
-                          stroke="#10b981"
-                          strokeWidth={2}
-                          dot={false}
-                        />
-                        <Tooltip
-                          contentStyle={{ background: '#1f2937', border: 'none', borderRadius: '8px' }}
-                          labelStyle={{ color: '#9ca3af' }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                <Separator className="my-4" />
-
-                {/* Control Actions */}
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-sm text-slate-500 dark:text-slate-400 uppercase tracking-wide">Control Actions</h4>
-
-                  {/* Emergency Button */}
-                  <Button
-                    variant="destructive"
-                    className="w-full gap-2 py-6 text-lg"
-                    onClick={() => triggerEmergency(selectedVehicle)}
-                  >
-                    <AlertTriangle className="w-5 h-5" />
-                    🚨 Trigger Emergency
-                  </Button>
-
-                  {/* Send Message */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="Message to driver..."
-                        value={messageText}
-                        onChange={(e) => setMessageText(e.target.value)}
-                        className="text-sm"
-                      />
-                      <Button
-                        size="sm"
-                        onClick={sendMessageToDriver}
-                        disabled={sendingMessage || !messageText.trim()}
-                        className="bg-blue-500 hover:bg-blue-600"
-                      >
-                        <Send className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Quick Actions */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button variant="outline" size="sm" className="gap-1" asChild>
-                      <a href={`tel:${selectedVehicle.driver_phone || '+919999999999'}`}>
-                        <Phone className="w-4 h-4" />
-                        Call Driver
-                      </a>
-                    </Button>
-                    <Button variant="outline" size="sm" className="gap-1" onClick={requestLocationPing}>
-                      <Locate className="w-4 h-4" />
-                      Force GPS Ping
-                    </Button>
-                  </div>
-
-                  {/* Reassign Route */}
-                  <div className="space-y-2">
-                    <Label className="text-sm text-slate-500 dark:text-slate-400">Reassign Route</Label>
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={newRoute}
-                        onChange={(e) => setNewRoute(e.target.value)}
-                        className="flex-1 text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 bg-white dark:bg-slate-800"
-                      >
-                        <option value="">Select Route...</option>
-                        {Object.keys(APSRTC_ROUTES).map(route => (
-                          <option key={route} value={route}>{route} - {APSRTC_ROUTES[route].name}</option>
-                        ))}
-                      </select>
-                      <Button
-                        size="sm"
-                        onClick={handleReassignRoute}
-                        disabled={!newRoute.trim()}
-                        className="bg-emerald-500 hover:bg-emerald-600"
-                      >
-                        <RouteIcon className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </ScrollArea>
-          </div>
-        )}
-      </div>
-
-      {/* Inline styles for animations */}
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.1); opacity: 0.8; }
-        }
-        .leaflet-popup-content-wrapper {
-          padding: 0 !important;
-          border-radius: 12px !important;
-          overflow: hidden;
-        }
-        .leaflet-popup-content {
-          margin: 0 !important;
-        }
-        .leaflet-popup-tip-container {
-          display: none;
-        }
-        .vehicle-marker-icon {
-          background: transparent !important;
-          border: none !important;
-        }
-        .bus-stop-marker-icon {
-          background: transparent !important;
-          border: none !important;
-        }
-      `}</style>
+      {/* ...other overlays... */}
     </div>
   );
 };
 
 export default OperationsMap;
-

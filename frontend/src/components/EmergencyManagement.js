@@ -3,7 +3,7 @@
  * Full implementation for emergency response coordination
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -11,14 +11,11 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
-import { Separator } from './ui/separator';
 import {
   AlertTriangle,
   Phone,
   MapPin,
   Clock,
-  User,
-  Bus,
   Siren,
   Shield,
   RefreshCw,
@@ -26,11 +23,11 @@ import {
   CheckCircle2,
   X,
   Radio,
-  Ambulance,
   Bell
 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { ref, onValue, set, update, remove, push } from 'firebase/database';
+import { ref, onValue, set, update, remove } from 'firebase/database';
+import OlaMapWrapper from './map/OlaMapWrapper';
 
 const EmergencyManagement = () => {
   const [emergencies, setEmergencies] = useState([]);
@@ -38,8 +35,6 @@ const EmergencyManagement = () => {
   const [selectedEmergency, setSelectedEmergency] = useState(null);
   const [showNewEmergency, setShowNewEmergency] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
-  const mapRef = useRef(null);
-  const mapInstance = useRef(null);
 
   // New emergency form
   const [newEmergency, setNewEmergency] = useState({
@@ -90,79 +85,6 @@ const EmergencyManagement = () => {
 
     return () => unsubscribe();
   }, []);
-
-  // Initialize map
-  useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
-
-    const loadMap = async () => {
-      if (!window.L) {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-
-        await new Promise((resolve) => {
-          const script = document.createElement('script');
-          script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-          script.onload = resolve;
-          document.head.appendChild(script);
-        });
-      }
-
-      const map = window.L.map(mapRef.current, {
-        center: [16.5062, 80.6480],
-        zoom: 11
-      });
-
-      window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
-        attribution: '© Ola Maps | APSRTC'
-      }).addTo(map);
-
-      mapInstance.current = map;
-      updateMapMarkers();
-    };
-
-    loadMap();
-
-    return () => {
-      if (mapInstance.current) {
-        mapInstance.current.remove();
-        mapInstance.current = null;
-      }
-    };
-  }, []);
-
-  // Update map markers when emergencies change
-  useEffect(() => {
-    if (mapInstance.current) {
-      updateMapMarkers();
-    }
-  }, [emergencies]);
-
-  const updateMapMarkers = () => {
-    if (!mapInstance.current) return;
-
-    // Clear existing markers (simplified)
-    emergencies.forEach(emergency => {
-      if (emergency.lat && emergency.lon) {
-        const color = emergency.severity === 'critical' ? '#ef4444' :
-                      emergency.severity === 'high' ? '#f97316' : '#eab308';
-
-        window.L.circleMarker([emergency.lat, emergency.lon], {
-          radius: 12,
-          color: color,
-          fillColor: color,
-          fillOpacity: 0.7,
-          weight: 3
-        }).bindPopup(`
-          <strong>${emergency.type?.toUpperCase()}</strong><br>
-          ${emergency.vehicle_id}<br>
-          ${emergency.location_name || 'Unknown location'}
-        `).addTo(mapInstance.current);
-      }
-    });
-  };
 
   // Create emergency
   const createEmergency = async () => {
@@ -264,6 +186,16 @@ const EmergencyManagement = () => {
       </div>
     );
   }
+
+  // Example emergencyMarkers construction
+  const emergencyMarkers = emergencies.map(e => ({
+    id: e.id,
+    lat: e.lat,
+    lng: e.lon,
+    iconUrl: undefined, // or provide a custom icon if needed
+    title: e.type,
+    zIndex: 2
+  }));
 
   return (
     <div className="space-y-6 p-1">
@@ -426,7 +358,11 @@ const EmergencyManagement = () => {
               <CardTitle className="text-sm">Emergency Locations</CardTitle>
             </CardHeader>
             <CardContent>
-              <div ref={mapRef} className="h-[250px] rounded-lg bg-slate-100" />
+              <OlaMapWrapper
+                center={{ lat: 16.5062, lng: 80.6480 }}
+                zoom={11}
+                markers={emergencyMarkers}
+              />
             </CardContent>
           </Card>
 
@@ -558,9 +494,29 @@ const EmergencyManagement = () => {
           </Card>
         </div>
       )}
+
+      {/* Emergency Location Map Modal */}
+      {selectedEmergency && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-lg p-4 w-[90vw] h-[80vh] relative">
+            <OlaMapWrapper
+              center={{ lat: selectedEmergency.lat, lng: selectedEmergency.lon }}
+              zoom={14}
+              markers={[{
+                id: selectedEmergency.id,
+                lat: selectedEmergency.lat,
+                lng: selectedEmergency.lon,
+                iconUrl: undefined,
+                title: selectedEmergency.type,
+                zIndex: 2
+              }]}
+            />
+            <button className="absolute top-2 right-2" onClick={() => setSelectedEmergency(null)}>Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default EmergencyManagement;
-

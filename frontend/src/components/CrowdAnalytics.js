@@ -4,13 +4,12 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import OlaMapWrapper from './map/OlaMapWrapper';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import {
   Users,
-  TrendingUp,
   TrendingDown,
   AlertTriangle,
   Bus,
@@ -32,13 +31,11 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell
+  ResponsiveContainer
 } from 'recharts';
 
 const CrowdAnalytics = () => {
+  const [tileStatus, setTileStatus] = useState({ ok: null, status: null, url: '' });
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const mapRef = useRef(null);
@@ -104,70 +101,44 @@ const CrowdAnalytics = () => {
     if (!mapRef.current || mapInstance.current) return;
 
     const loadMap = async () => {
-      // Load Leaflet CSS
-      if (!document.querySelector('link[href*="leaflet.css"]')) {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      // Load Leaflet JS
-      if (!window.L) {
-        await new Promise((resolve) => {
-          const script = document.createElement('script');
-          script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-          script.onload = resolve;
-          document.head.appendChild(script);
-        });
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      // Load heatmap plugin
-      if (!window.L.heatLayer) {
-        await new Promise((resolve) => {
-          const script = document.createElement('script');
-          script.src = 'https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js';
-          script.onload = resolve;
-          script.onerror = () => {
-            console.warn('Heatmap plugin failed to load, using fallback');
-            resolve();
-          };
-          document.head.appendChild(script);
-        });
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      // If Leaflet is not present on window, attach imported L (bundled)
+      // Ensure window.L uses imported L
+      if (!window.L && L) window.L = L;
 
       const map = window.L.map(mapRef.current, {
         center: [16.5062, 80.6480],
         zoom: 12,
         zoomControl: true,
-        maxZoom: 18,
+        maxZoom: 22,
         minZoom: 8
       });
 
-      // Primary tile layer with fallback
+      const TRANSPARENT_TILE = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+
+      // Ola-only tiles (no OSM). maxNativeZoom=18 lets us use scaled tiles when overzooming
       const olaTiles = window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
         attribution: '© Ola Maps',
-        maxZoom: 18,
-        minZoom: 8
-      });
-
-      const osmTiles = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap',
-        maxZoom: 19,
-        minZoom: 8
-      });
-
-      // Try Ola first, fallback to OSM
-      olaTiles.on('tileerror', () => {
-        if (!map.hasLayer(osmTiles)) {
-          map.removeLayer(olaTiles);
-          osmTiles.addTo(map);
-        }
+        maxZoom: 22,
+        minZoom: 8,
+        maxNativeZoom: 18,
+        errorTileUrl: TRANSPARENT_TILE,
+        detectRetina: false
       });
       olaTiles.addTo(map);
+
+      // Quick connectivity check for Ola tiles (sample tile at maxNative zoom)
+      (async () => {
+        try {
+          const maxNative = olaTiles.options.maxNativeZoom || 18;
+          const sampleUrl = olaTiles.getTileUrl({ x: 0, y: 0, z: maxNative });
+          const resp = await fetch(sampleUrl, { method: 'HEAD' });
+          setTileStatus({ ok: resp.ok, status: resp.status, url: sampleUrl });
+          console.log('Ola sample tile HEAD', resp.status, sampleUrl);
+        } catch (e) {
+          setTileStatus({ ok: false, status: e.message, url: '' });
+          console.warn('Ola sample tile HEAD failed', e);
+        }
+      })();
 
       mapInstance.current = map;
       
@@ -175,6 +146,8 @@ const CrowdAnalytics = () => {
       setTimeout(() => {
         map.invalidateSize();
       }, 200);
+
+      console.log('CrowdAnalytics map initialized, heat plugin present=', !!window.L?.heatLayer);
     };
 
     loadMap();
@@ -189,6 +162,8 @@ const CrowdAnalytics = () => {
 
   // Store heatmap layer reference
   const heatLayerRef = useRef(null);
+  // Store fallback circles so they can be cleared on updates
+  const fallbackCirclesRef = useRef([]);
 
   // Update heatmap when vehicles change
   useEffect(() => {
@@ -197,13 +172,49 @@ const CrowdAnalytics = () => {
     }
   }, [vehicles]);
 
+  // Map status for debugging (plugin loaded, points count)
+  const [heatStatus, setHeatStatus] = useState({ plugin: !!(window.L && window.L.heatLayer), points: 0 });
+
+  // Test helper: seed mock heat points to verify rendering
+  const seedTestHeat = () => {
+    if (!mapInstance.current) return;
+    const center = mapInstance.current.getCenter();
+    const pts = [];
+    for (let i = 0; i < 12; i++) {
+      const lat = center.lat + (Math.random() - 0.5) * 0.02;
+      const lon = center.lng + (Math.random() - 0.5) * 0.03;
+      const intensity = 0.4 + Math.random() * 0.6;
+      pts.push([lat, lon, intensity]);
+    }
+    // force draw
+    if (heatLayerRef.current) { try { mapInstance.current.removeLayer(heatLayerRef.current); } catch (e) {} heatLayerRef.current = null; }
+    fallbackCirclesRef.current.forEach(c => { try { mapInstance.current.removeLayer(c); } catch (e) {} }); fallbackCirclesRef.current = [];
+    if (window.L && window.L.heatLayer) {
+      heatLayerRef.current = window.L.heatLayer(pts, { radius: 35, blur: 25 }).addTo(mapInstance.current);
+      setHeatStatus({ plugin: true, points: pts.length });
+    } else {
+      pts.forEach(([lat, lon, intensity]) => {
+        const color = intensity > 0.8 ? '#ef4444' : intensity > 0.5 ? '#f59e0b' : '#22c55e';
+        const circle = window.L.circle([lat, lon], { radius: 200, color, fillColor: color, fillOpacity: 0.4 }).addTo(mapInstance.current);
+        fallbackCirclesRef.current.push(circle);
+      });
+      setHeatStatus({ plugin: false, points: pts.length });
+    }
+    setTimeout(() => mapInstance.current.invalidateSize(), 50);
+  };
+
   const updateHeatmap = () => {
     if (!mapInstance.current) return;
 
     // Remove existing heatmap layer
     if (heatLayerRef.current) {
-      mapInstance.current.removeLayer(heatLayerRef.current);
+      try { mapInstance.current.removeLayer(heatLayerRef.current); } catch (e) {}
       heatLayerRef.current = null;
+    }
+    // Remove any fallback circles from previous renders
+    if (fallbackCirclesRef.current && fallbackCirclesRef.current.length > 0) {
+     fallbackCirclesRef.current.forEach(c => { try { mapInstance.current.removeLayer(c); } catch (e) {} });
+     fallbackCirclesRef.current = [];
     }
 
     // Create heat points based on passenger density
@@ -211,11 +222,16 @@ const CrowdAnalytics = () => {
       .filter(v => v.lat && v.lon && !isNaN(v.lat) && !isNaN(v.lon))
       .map(v => [v.lat, v.lon, Math.max(0.3, (v.occupancy_percent || 50) / 100)]);
 
+    console.log('Heatmap update: vehicles count', vehicles.length, 'valid points', heatPoints.length);
+
+    // set status
+    setHeatStatus(prev => ({ plugin: !!(window.L && window.L.heatLayer), points: heatPoints.length }));
+
     if (heatPoints.length > 0 && window.L && window.L.heatLayer) {
       heatLayerRef.current = window.L.heatLayer(heatPoints, {
         radius: 35,
         blur: 25,
-        maxZoom: 15,
+        maxZoom: 19,
         max: 1.0,
         gradient: { 
           0.2: '#22c55e', 
@@ -231,15 +247,18 @@ const CrowdAnalytics = () => {
       // Fallback: Draw circles if heatmap plugin not available
       heatPoints.forEach(([lat, lon, intensity]) => {
         const color = intensity > 0.8 ? '#ef4444' : intensity > 0.5 ? '#f59e0b' : '#22c55e';
-        window.L.circle([lat, lon], {
+        const circle = window.L.circle([lat, lon], {
           radius: 200,
           color: color,
           fillColor: color,
           fillOpacity: 0.4,
           weight: 1
         }).addTo(mapInstance.current);
+        fallbackCirclesRef.current.push(circle);
       });
       console.log(`📍 Fallback circles drawn for ${heatPoints.length} points`);
+    } else {
+      console.log('No valid heat points');
     }
   };
 
@@ -262,6 +281,16 @@ const CrowdAnalytics = () => {
   })).sort((a, b) => b.passengers - a.passengers);
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+  // Construct crowd markers for OlaMapWrapper
+  const crowdMarkers = vehicles.map((v, idx) => ({
+    id: v.vehicle_id || `crowd-${idx}`,
+    lat: v.lat,
+    lng: v.lon,
+    iconUrl: undefined,
+    title: v.occupancy_percent > 85 ? 'High' : v.occupancy_percent > 50 ? 'Medium' : 'Low',
+    zIndex: 1
+  }));
 
   if (loading) {
     return (
@@ -347,7 +376,26 @@ const CrowdAnalytics = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div ref={mapRef} className="h-[350px] rounded-lg bg-slate-100" />
+            <div className="relative rounded-lg overflow-hidden">
+              <div className="h-[350px] w-full bg-slate-100">
+                <OlaMapWrapper
+                  center={{ lat: 16.506, lng: 80.648 }}
+                  zoom={12}
+                  markers={crowdMarkers}
+                />
+              </div>
+              {/* Debug overlay: heat plugin & points count + test button */}
+              <div className="absolute right-4 top-4 z-[1100] bg-white/90 p-2 rounded shadow-sm text-xs">
+                <div className="mb-1">Heat plugin: <strong>{heatStatus.plugin ? 'Loaded' : 'Missing'}</strong></div>
+                <div className="mb-2">Points: <strong>{heatStatus.points}</strong></div>
+                <button onClick={seedTestHeat} className="px-2 py-1 bg-blue-500 text-white rounded text-xs">Test Heatmap</button>
+              </div>
+              {/* Ola tile diagnostic */}
+              <div className="absolute left-4 top-4 z-[1100] bg-white/90 p-2 rounded shadow-sm text-xs">
+                <div>Ola tiles: <strong>{tileStatus.ok === null ? 'checking...' : tileStatus.ok ? `OK (${tileStatus.status})` : `ERROR (${tileStatus.status})`}</strong></div>
+                {tileStatus.url && <div className="break-all text-xxs max-w-[200px]">{tileStatus.url}</div>}
+              </div>
+            </div>
             <div className="mt-3 flex items-center justify-center gap-4 text-xs">
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 rounded-full bg-emerald-500" />
@@ -461,4 +509,3 @@ const CrowdAnalytics = () => {
 };
 
 export default CrowdAnalytics;
-

@@ -25,7 +25,6 @@ import {
   RefreshCw,
   ArrowRight,
   Target,
-  DollarSign,
   Gauge,
   Play,
   CheckCircle2,
@@ -34,8 +33,6 @@ import {
 import { db } from '../lib/firebase';
 import { ref, onValue, set } from 'firebase/database';
 import {
-  LineChart,
-  Line,
   AreaChart,
   Area,
   BarChart,
@@ -45,12 +42,9 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell
+  ResponsiveContainer
 } from 'recharts';
-import { generateAIInsights, APSRTC_ROUTES } from '../services/DataSimulationService';
+import { generateAIInsights } from '../services/DataSimulationService';
 
 const OLA_MAPS_API_KEY = 'aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK';
 
@@ -278,8 +272,6 @@ const AIInsights = () => {
     });
   };
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -292,7 +284,7 @@ const AIInsights = () => {
   }
 
   return (
-    <div className="space-y-6 p-1">
+    <div className="relative w-full h-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -765,4 +757,3 @@ const AIInsights = () => {
 };
 
 export default AIInsights;
-

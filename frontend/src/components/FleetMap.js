@@ -4,29 +4,16 @@
  * NOW WITH ROAD-SNAPPED ROUTES!
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
-import {
-  MapPin,
-  Users,
-  Clock,
-  Navigation,
-  RefreshCw,
-  Locate,
-  Maximize2,
-  Minimize2,
-  Search,
-  Bus,
-  AlertTriangle,
-  Activity,
-  Route
-} from 'lucide-react';
+import { MapPin, RefreshCw, Maximize2, Minimize2 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { ref, onValue } from 'firebase/database';
 import { getRouteById, getRouteIds } from '../services/VijayawadaRoutes';
+import OlaMapWrapper from './map/OlaMapWrapper';
 
 // Vijayawada center
 const CENTER = { lat: 16.5062, lng: 80.6480 };
@@ -55,15 +42,11 @@ const getBusStops = () => {
   return stops;
 };
 
-const BUS_STOPS = getBusStops();
-
-const FleetMap = ({ fullSize = false }) => {
+const FleetMap = () => {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const markersRef = useRef({});
-  const busStopMarkersRef = useRef([]);
-  
-  const [selectedBus, setSelectedBus] = useState(null);
+
   const [mapFilter, setMapFilter] = useState('all');
   const [mapLoaded, setMapLoaded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -78,73 +61,13 @@ const FleetMap = ({ fullSize = false }) => {
 
     const initMap = async () => {
       try {
-        // Load Leaflet CSS
-        if (!document.querySelector('link[href*="leaflet.css"]')) {
-          const link = document.createElement('link');
-          link.rel = 'stylesheet';
-          link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-          document.head.appendChild(link);
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-
-        // Load Leaflet JS
-        if (!window.L) {
-          await new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
-          });
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-
         // Create map with proper zoom limits
         const map = window.L.map(mapRef.current, {
           center: [CENTER.lat, CENTER.lng],
           zoom: 11,
           zoomControl: false,
-          maxZoom: 18,
+          maxZoom: 22,
           minZoom: 8
-        });
-
-        // Add Ola Maps tiles with OSM fallback
-        const olaTiles = window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
-          attribution: '© Ola Maps | APSRTC',
-          maxZoom: 18,
-          minZoom: 8
-        });
-
-        const osmTiles = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap | APSRTC',
-          maxZoom: 19,
-          minZoom: 8
-        });
-
-        // Try Ola first, fallback to OSM on error
-        olaTiles.on('tileerror', () => {
-          if (!map.hasLayer(osmTiles)) {
-            console.log('Switching to OSM tiles');
-            map.removeLayer(olaTiles);
-            osmTiles.addTo(map);
-          }
-        });
-        olaTiles.addTo(map);
-
-        // Add zoom control
-        window.L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-        // Add bus stops
-        BUS_STOPS.forEach(stop => {
-          const marker = window.L.circleMarker([stop.lat, stop.lon], {
-            radius: 8,
-            color: '#3b82f6',
-            fillColor: '#3b82f6',
-            fillOpacity: 0.7,
-            weight: 2
-          }).bindPopup(`<strong>${stop.name}</strong><br><small>Bus Stop</small>`)
-            .addTo(map);
-          busStopMarkersRef.current.push(marker);
         });
 
         mapInstance.current = map;
@@ -156,7 +79,6 @@ const FleetMap = ({ fullSize = false }) => {
         }, 200);
 
         console.log('✅ FleetMap initialized with zoom limits');
-
       } catch (error) {
         console.error('Map init error:', error);
       }
@@ -341,131 +263,137 @@ const FleetMap = ({ fullSize = false }) => {
     }
   };
 
+  // Example busMarkers and routeLines construction
+  const busMarkers = buses.map(bus => ({
+    id: bus.vehicle_id,
+    lat: bus.lat,
+    lng: bus.lon,
+    iconUrl: undefined, // or provide a custom icon if needed
+    title: bus.route_id,
+    zIndex: 2
+  }));
+  const routeLines = routes.map(route => ({
+    id: route.route_id,
+    path: route.polyline, // array of {lat, lng}
+    color: route.color || '#3b82f6',
+    weight: 4
+  }));
+
   return (
     <div className={`h-full ${isFullscreen ? 'fixed inset-0 z-50 bg-white p-4' : ''}`}>
       <Card className="h-full overflow-hidden">
-        <CardHeader className="pb-3 bg-gradient-to-r from-slate-900 to-slate-800">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle className="flex items-center gap-2 text-white">
-              <MapPin className="w-5 h-5" />
-              <span>Legacy Fleet Map</span>
-              <Badge className={isConnected ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}>
-                <Activity className="w-3 h-3 mr-1" />
-                {isConnected ? `${stats.active} Active` : 'Disconnected'}
-              </Badge>
-            </CardTitle>
-            
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <Input
-                  placeholder="Search..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 w-36 h-8 text-sm bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
-                />
-              </div>
-
-              {/* Filter */}
-              <select
-                value={mapFilter}
-                onChange={(e) => setMapFilter(e.target.value)}
-                className="text-sm border rounded px-2 py-1 h-8 bg-slate-700 border-slate-600 text-white"
-              >
-                <option value="all">All ({stats.total})</option>
-                <option value="active">Active ({stats.active})</option>
-                <option value="delayed">Delayed ({stats.delayed})</option>
-                <option value="emergency">Emergency ({stats.emergency})</option>
-              </select>
-
-              {/* Actions */}
-              <Button variant="outline" size="sm" onClick={centerMap} className="h-8 border-slate-600 text-white hover:bg-slate-700">
-                <Locate className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleRefresh} className="h-8 border-slate-600 text-white hover:bg-slate-700">
-                <RefreshCw className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setIsFullscreen(!isFullscreen)} className="h-8 border-slate-600 text-white hover:bg-slate-700">
-                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-              </Button>
-            </div>
+        <CardHeader className="flex items-center justify-between p-4">
+          <CardTitle className="text-lg font-semibold">Live Fleet Map</CardTitle>
+          <div className="flex items-center space-x-2">
+            <Button variant="outline" onClick={centerMap} className="rounded-full">
+              <MapPin className="w-4 h-4 mr-1" />
+              Center Map
+            </Button>
+            <Button variant="outline" onClick={handleRefresh} className="rounded-full">
+              <RefreshCw className="w-4 h-4 mr-1" />
+              Refresh
+            </Button>
+            <Button
+              variant={isFullscreen ? 'default' : 'outline'}
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="rounded-full"
+            >
+              {isFullscreen ? (
+                <>
+                  <Minimize2 className="w-4 h-4 mr-1" />
+                  Exit Fullscreen
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-4 h-4 mr-1" />
+                  Fullscreen
+                </>
+              )}
+            </Button>
           </div>
         </CardHeader>
-
-        <CardContent className="p-0 relative" style={{ height: 'calc(100% - 70px)' }}>
-          {/* Map Container */}
+        <CardContent className="relative p-0">
           <div
             ref={mapRef}
             className="w-full h-full"
-            style={{ minHeight: '400px', background: '#e5e7eb' }}
-          />
-
-          {/* Loading State */}
-          {!mapLoaded && (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-100">
-              <div className="text-center">
-                <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-2" />
-                <p className="text-sm text-slate-500">Loading Map...</p>
-              </div>
+            style={{ minHeight: '400px', touchAction: 'none' }}
+          >
+            <OlaMapWrapper
+              center={{ lat: 16.506, lng: 80.648 }}
+              zoom={12}
+              markers={busMarkers}
+              polylines={routeLines}
+            />
+          </div>
+          {!isConnected && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80">
+              <p className="text-center text-sm text-gray-500">
+                Waiting for live data from the server...
+              </p>
             </div>
           )}
-
-          {/* Legend */}
-          <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg p-3 shadow-lg border z-[1000]">
-            <h4 className="text-xs font-bold mb-2 text-slate-700">Legend</h4>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs">
-                <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                <span>Active ({stats.active})</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                <span>Delayed ({stats.delayed})</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                <span>Emergency ({stats.emergency})</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                <span>Bus Stop</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm rounded-lg p-2 shadow-lg border z-[1000]">
-            <div className="text-xs text-center">
-              <span className="font-bold text-lg">{stats.total}</span>
-              <p className="text-slate-500">Total Buses</p>
-            </div>
-          </div>
         </CardContent>
+        <div className="p-4 bg-gray-50 border-t">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center space-x-2 mb-2 sm:mb-0">
+              <Badge variant="outline" className="text-xs">
+                Total Buses: {stats.total}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                Active: {stats.active}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                Delayed: {stats.delayed}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                Emergency: {stats.emergency}
+              </Badge>
+            </div>
+            <div className="flex space-x-2">
+              <Button
+                variant={mapFilter === 'all' ? 'default' : 'outline'}
+                onClick={() => setMapFilter('all')}
+                className="rounded-full"
+              >
+                All
+              </Button>
+              <Button
+                variant={mapFilter === 'active' ? 'default' : 'outline'}
+                onClick={() => setMapFilter('active')}
+                className="rounded-full"
+              >
+                Active
+              </Button>
+              <Button
+                variant={mapFilter === 'delayed' ? 'default' : 'outline'}
+                onClick={() => setMapFilter('delayed')}
+                className="rounded-full"
+              >
+                Delayed
+              </Button>
+              <Button
+                variant={mapFilter === 'emergency' ? 'default' : 'outline'}
+                onClick={() => setMapFilter('emergency')}
+                className="rounded-full"
+              >
+                Emergency
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-2">
+            <div className="flex items-center space-x-2 mb-2 sm:mb-0">
+              <Input
+                placeholder="Search by Bus ID or Route"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full max-w-xs"
+              />
+            </div>
+          </div>
+        </div>
       </Card>
-
-      {/* Styles */}
-      <style>{`
-        .bus-marker {
-          background: transparent !important;
-          border: none !important;
-        }
-        .leaflet-popup-content-wrapper {
-          padding: 0 !important;
-          border-radius: 8px !important;
-          overflow: hidden;
-        }
-        .leaflet-popup-content {
-          margin: 0 !important;
-        }
-        .leaflet-control-attribution {
-          font-size: 10px !important;
-          background: rgba(255,255,255,0.8) !important;
-        }
-      `}</style>
     </div>
   );
 };
 
 export default FleetMap;
-

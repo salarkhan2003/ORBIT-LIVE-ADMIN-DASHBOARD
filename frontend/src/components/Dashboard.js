@@ -69,6 +69,7 @@ import FleetDriverManagement from './FleetDriverManagement';
 import AIInsights from './AIInsights';
 import AlertsIncidentManager from './AlertsIncidentManager';
 import ReportingAnalytics from './ReportingAnalytics';
+import ErrorBoundary from './ErrorBoundary';
 
 const Dashboard = () => {
   const { theme, toggleTheme } = useTheme();
@@ -186,87 +187,89 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Header */}
-      <Header 
-        currentTime={currentTime}
-        activeRegion={activeRegion}
-        setActiveRegion={setActiveRegion}
-        userRole={userRole}
-        setUserRole={setUserRole}
-        isLive={isLive}
-        setIsLive={setIsLive}
-      />
+    <ErrorBoundary>
+      <div className="flex flex-col h-screen bg-background">
+        {/* Header */}
+        <Header
+          currentTime={currentTime}
+          activeRegion={activeRegion}
+          setActiveRegion={setActiveRegion}
+          userRole={userRole}
+          setUserRole={setUserRole}
+          isLive={isLive}
+          setIsLive={setIsLive}
+        />
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-64 bg-card border-r border-border flex flex-col">
-          {/* Logo and Header */}
-          <div className="p-4 border-b border-border">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-orange-500 to-red-600 rounded-lg flex items-center justify-center">
-                <Bus className="w-6 h-6 text-white" />
+        {/* Main Content */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Sidebar */}
+          <div className="w-64 bg-card border-r border-border flex flex-col">
+            {/* Logo and Header */}
+            <div className="p-4 border-b border-border">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-r from-orange-500 to-red-600 rounded-lg flex items-center justify-center">
+                  <Bus className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold text-foreground truncate">APSRTC Control</h1>
+                  <p className="text-xs text-muted-foreground truncate">Operations Center</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-lg font-bold text-foreground truncate">APSRTC Control</h1>
-                <p className="text-xs text-muted-foreground truncate">Operations Center</p>
+            </div>
+
+            {/* Navigation */}
+            <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+              {sidebarItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      activeTab === item.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* User Profile */}
+            <div className="p-4 border-t border-border">
+              <div className="flex items-center space-x-3 mb-3">
+                <div className="w-8 h-8 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-semibold">A</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">Admin User</p>
+                  <p className="text-xs text-muted-foreground truncate">Super Admin</p>
+                </div>
               </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleTheme}
+                className="w-full justify-start"
+              >
+                {theme === 'light' ? <Moon className="w-4 h-4 mr-2" /> : <Sun className="w-4 h-4 mr-2" />}
+                {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+              </Button>
             </div>
           </div>
 
-          {/* Navigation */}
-          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-            {sidebarItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    activeTab === item.id
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                  }`}
-                >
-                  <Icon className="w-4 h-4 flex-shrink-0" />
-                  <span className="truncate">{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* User Profile */}
-          <div className="p-4 border-t border-border">
-            <div className="flex items-center space-x-3 mb-3">
-              <div className="w-8 h-8 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-semibold">A</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">Admin User</p>
-                <p className="text-xs text-muted-foreground truncate">Super Admin</p>
-              </div>
+          {/* Main Content Area */}
+          <main className="flex-1 overflow-y-auto p-4 bg-background">
+            <div className="max-w-full">
+              {renderContent()}
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleTheme}
-              className="w-full justify-start"
-            >
-              {theme === 'light' ? <Moon className="w-4 h-4 mr-2" /> : <Sun className="w-4 h-4 mr-2" />}
-              {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
-            </Button>
-          </div>
+          </main>
         </div>
-
-        {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 bg-background">
-          <div className="max-w-full">
-            {renderContent()}
-          </div>
-        </main>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 };
 

@@ -32,6 +32,7 @@ import {
 import { db } from '../lib/firebase';
 import { ref, onValue, set, update, remove, push } from 'firebase/database';
 import { APSRTC_ROUTES } from '../services/DataSimulationService';
+import OlaMapWrapper from './map/OlaMapWrapper';
 
 const RouteManagement = () => {
   const [routes, setRoutes] = useState([]);
@@ -218,73 +219,6 @@ const RouteManagement = () => {
     setShowMapModal(true);
   };
 
-  // Initialize map when modal opens
-  useEffect(() => {
-    if (!showMapModal || !mapRef.current || !selectedRoute) return;
-
-    const initMap = async () => {
-      if (!window.L) {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-
-        await new Promise((resolve) => {
-          const script = document.createElement('script');
-          script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-          script.onload = resolve;
-          document.head.appendChild(script);
-        });
-      }
-
-      if (mapInstance.current) {
-        mapInstance.current.remove();
-      }
-
-      const stops = selectedRoute.stops || [];
-      const center = stops.length > 0
-        ? [stops[0].lat, stops[0].lon]
-        : [16.5062, 80.6480];
-
-      const map = window.L.map(mapRef.current, {
-        center,
-        zoom: 12
-      });
-
-      window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
-        attribution: '© Ola Maps'
-      }).addTo(map);
-
-      // Add stop markers
-      stops.forEach((stop, idx) => {
-        window.L.marker([stop.lat, stop.lon])
-          .bindPopup(`<strong>${idx + 1}. ${stop.name}</strong>`)
-          .addTo(map);
-      });
-
-      // Draw route line
-      if (stops.length > 1) {
-        const coordinates = stops.map(s => [s.lat, s.lon]);
-        window.L.polyline(coordinates, {
-          color: '#3b82f6',
-          weight: 4,
-          opacity: 0.8
-        }).addTo(map);
-      }
-
-      mapInstance.current = map;
-    };
-
-    initMap();
-
-    return () => {
-      if (mapInstance.current) {
-        mapInstance.current.remove();
-        mapInstance.current = null;
-      }
-    };
-  }, [showMapModal, selectedRoute]);
-
   // Filter routes
   const filteredRoutes = routes.filter(route =>
     route.route_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -297,6 +231,24 @@ const RouteManagement = () => {
     active: routes.filter(r => r.status === 'active').length,
     totalStops: routes.reduce((sum, r) => sum + (r.stops?.length || 0), 0)
   };
+
+  // Example routeMarkers and routeLines construction
+  const routeMarkers = routes.flatMap(route =>
+    route.stops.map((stop, idx) => ({
+      id: `${route.route_id}-stop-${idx}`,
+      lat: stop.lat,
+      lng: stop.lon,
+      iconUrl: undefined,
+      title: stop.name,
+      zIndex: 1
+    }))
+  );
+  const routeLines = routes.map(route => ({
+    id: route.route_id,
+    path: route.stops.map(stop => ({ lat: stop.lat, lng: stop.lon })),
+    color: route.color || '#3b82f6',
+    weight: 4
+  }));
 
   if (loading) {
     return (
@@ -672,28 +624,16 @@ const RouteManagement = () => {
 
       {/* Map View Modal */}
       {showMapModal && selectedRoute && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-4xl">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Route Map: {selectedRoute.route_id} - {selectedRoute.name}</CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => setShowMapModal(false)}>
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div ref={mapRef} className="h-[500px] rounded-lg bg-slate-100" />
-              <div className="mt-4">
-                <h4 className="font-semibold mb-2">Stops ({selectedRoute.stops?.length || 0})</h4>
-                <div className="flex flex-wrap gap-2">
-                  {(selectedRoute.stops || []).map((stop, idx) => (
-                    <Badge key={idx} variant="outline">{idx + 1}. {stop.name}</Badge>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-lg p-4 w-[90vw] h-[80vh] relative">
+            <OlaMapWrapper
+              center={{ lat: 16.506, lng: 80.648 }}
+              zoom={12}
+              markers={routeMarkers}
+              polylines={routeLines}
+            />
+            <button className="absolute top-2 right-2" onClick={() => setShowMapModal(false)}>Close</button>
+          </div>
         </div>
       )}
     </div>
@@ -701,4 +641,3 @@ const RouteManagement = () => {
 };
 
 export default RouteManagement;
-

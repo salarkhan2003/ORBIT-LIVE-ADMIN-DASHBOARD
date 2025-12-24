@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { 
@@ -14,12 +14,13 @@ import {
   Maximize2,
   Minimize2
 } from 'lucide-react';
+import OlaMapWrapper from './map/OlaMapWrapper';
 
 const CommandCenter = () => {
-  const mapRef = useRef(null);
-  const mapInstance = useRef(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Add local state for map center and zoom
+  const [mapView, setMapView] = useState({ center: { lat: 16.5062, lng: 80.6480 }, zoom: 12 });
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -28,84 +29,14 @@ const CommandCenter = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Initialize Leaflet map
-  useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
-
-    // Load Leaflet dynamically
-    const leafletCSS = document.createElement('link');
-    leafletCSS.rel = 'stylesheet';
-    leafletCSS.href = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.css';
-    document.head.appendChild(leafletCSS);
-
-    const leafletJS = document.createElement('script');
-    leafletJS.src = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js';
-    leafletJS.onload = () => {
-      if (window.L && mapRef.current) {
-        // Initialize map centered on Vijayawada
-        mapInstance.current = window.L.map(mapRef.current).setView([16.5062, 80.6480], 12);
-
-        // Add Ola Maps tile layer
-        window.L.tileLayer('https://api.olamaps.io/tiles/v1/styles/default-light-standard/{z}/{x}/{y}.png?api_key=aI85TeqACpT8tV1YcAufNssW0epqxuPUr6LvMaGK', {
-          attribution: '© Ola Maps | APSRTC'
-        }).addTo(mapInstance.current);
-
-        // Add sample bus markers
-        const busMarkers = [
-          { id: 'APSRTC001', lat: 16.5062, lng: 80.6480, status: 'active' },
-          { id: 'APSRTC002', lat: 16.5119, lng: 80.6332, status: 'delayed' },
-          { id: 'APSRTC003', lat: 17.6868, lng: 83.2185, status: 'emergency' },
-          { id: 'APSRTC004', lat: 17.7132, lng: 83.2969, status: 'active' },
-          { id: 'APSRTC005', lat: 16.4975, lng: 80.6559, status: 'inactive' }
-        ];
-
-        busMarkers.forEach(bus => {
-          const color = bus.status === 'active' ? '#10b981' : 
-                       bus.status === 'delayed' ? '#f59e0b' : 
-                       bus.status === 'emergency' ? '#ef4444' : '#6b7280';
-          
-          const marker = window.L.marker([bus.lat, bus.lng], {
-            icon: window.L.divIcon({
-              className: 'bus-marker',
-              html: `
-                <div style="
-                  width: 20px; 
-                  height: 20px; 
-                  background: ${color}; 
-                  border-radius: 50%; 
-                  border: 2px solid white; 
-                  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  color: white;
-                  font-weight: bold;
-                  font-size: 10px;
-                ">${bus.id.slice(-3)}</div>
-              `,
-              iconSize: [20, 20],
-              iconAnchor: [10, 10]
-            })
-          }).addTo(mapInstance.current);
-
-          marker.bindPopup(`
-            <div>
-              <h4>${bus.id}</h4>
-              <p>Status: ${bus.status}</p>
-            </div>
-          `);
-        });
-      }
-    };
-    document.head.appendChild(leafletJS);
-
-    return () => {
-      if (mapInstance.current) {
-        mapInstance.current.remove();
-        mapInstance.current = null;
-      }
-    };
-  }, []);
+  // Demo bus markers (replace with real data if needed)
+  const busMarkers = [
+    { id: 'APSRTC001', lat: 16.5062, lng: 80.6480, title: 'Active', zIndex: 2 },
+    { id: 'APSRTC002', lat: 16.5119, lng: 80.6332, title: 'Delayed', zIndex: 2 },
+    { id: 'APSRTC003', lat: 17.6868, lng: 83.2185, title: 'Emergency', zIndex: 2 },
+    { id: 'APSRTC004', lat: 17.7132, lng: 83.2969, title: 'Active', zIndex: 2 },
+    { id: 'APSRTC005', lat: 16.4975, lng: 80.6559, title: 'Inactive', zIndex: 2 }
+  ];
 
   // Mock data for wallboard display
   const kpiData = [
@@ -230,7 +161,14 @@ const CommandCenter = () => {
               <MapPin className="w-5 h-5 mr-2" />
               Live Fleet Map
             </h2>
-            <div ref={mapRef} className="w-full h-96 rounded-lg border"></div>
+            <div className="w-full h-96 rounded-lg border overflow-hidden">
+              <OlaMapWrapper
+                center={mapView.center}
+                zoom={mapView.zoom}
+                markers={busMarkers}
+                onViewChange={({ center, zoom }) => setMapView({ center, zoom })}
+              />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -298,3 +236,4 @@ const CommandCenter = () => {
 };
 
 export default CommandCenter;
+
